@@ -1,38 +1,40 @@
 ```{r setup}
- knitr::opts_chunk$set(cache=TRUE)
+knitr::opts_chunk$set(cache = TRUE)
 ```
 
 ```{r}
 load_libraries <- function() {
-    library(readr)
-    library(dplyr)
+  library(readr)
+  library(dplyr)
 }
 load_libraries()
 ```
 
 ```{r}
 products <- read_csv("data/digikala-products.csv")
-comments <- read_csv("data/digikala-comments.csv") 
+comments <- read_csv("data/digikala-comments.csv")
 ```
 
-### Products - rename columns ###
+#### Products - rename columns 
 
 ```{r}
 rename_columns <- function(df) {
-    df %>%
-      rename(rate = Rate, 
+  df %>%
+    rename(
+      rate = Rate,
       rate_cnt = Rate_cnt,
       category_1 = Category1,
       category_2 = Category2,
       brand = Brand,
       price = Price,
       seller = Seller,
-      is_fake = Is_Fake)
+      is_fake = Is_Fake
+    )
 }
 products <- rename_columns(products)
 ```
 
-### Hmmm ... ###
+#### Hmmm ...
 
 ```{r}
 summary(products)
@@ -46,29 +48,87 @@ colnames(products)
 colSums(is.na(products)) # seller nan, price 0
 products$rate[1:10]
 products$rate_cnt[1:100]
-products$category_1 %>% unique() %>% head(50)
-products$category_2 %>% unique() %>% head(20)
+products$category_1 %>%
+  unique() %>%
+  head(50)
+products$category_2 %>%
+  unique() %>%
+  head(20)
 products %>%
-  filter(category_1 == "بهداشت دهان و دندان") %>% 
+  filter(category_1 == "بهداشت دهان و دندان") %>%
   arrange(price) # Category 2 is the subcategory
 # prices are in RIAL
 # Check 3552869 id in products and this link :
 # https://www.digikala.com/product/dkp-3552869/%D9%85%D8%B3%D9%88%D8%A7%DA%A9-%D9%87%D8%A7%DB%8C%D8%AF%D9%86%D8%AA-%D9%85%D8%AF%D9%84-909-%D8%A8%D8%A7-%D8%A8%D8%B1%D8%B3-%D9%85%D8%AA%D9%88%D8%B3%D8%B7/
-# 
+#
 products$seller[1:10]
-products$sub_category %>% unique # very few
+products$sub_category %>% unique() # very few
 ```
 
 ```{r}
 colnames(comments)
 comments$body[1:10] # comment text
 comments$created_at[1:10] # needs parsing
+comments %>%
+  select(created_at) %>%
+  unique() # contains 1399, 1400, 1401, 1402
+
 comments$rate[1:50]
 comments$recommendation_status %>% unique()
+comments %>%
+  count(is_buyer)
+comments %>%
+  filter(is_buyer == TRUE) %>%
+  head(20)
 comments$product_id[1:10]
 comments$advantages[1:50]
 comments$disadvantages[1:50]
-comments$seller_title[1:10]
+comments$likes[1:50]
+comments$seller_title[1:50]
+comments %>%
+  filter(product_id == 13287852)
 comments$seller_code[1:10] # what is this?
 comments$true_to_size_rate %>% unique() # is fit or not
 ```
+
+## Ideas
+### Predictions
+#### Product Recommendation System
+#### Sentiment Analysis of Comments
+#### Product Rating Prediction
+#### Price Optimization
+#### Demand Forcasting
+#### Product Similarity
+#### Product Rating Lifecycle
+#### Trends in Seasons
+#### Automated Price Categorization Using NLP
+#### Product Return Prediction
+#### Product Being Fake Matters?
+#### Similar Product Analysis
+#### Historical Events Effect On Market
+#### Outliers Analysis (in Product and Comments) (For Detecting Fraud)
+
+### Financial
+#### Price Elasticity of Demand
+#### Analysis Of Stock Out
+#### Products With High Return
+
+### Marketing 
+#### Customer Segmentation
+#### Customer Retention Strategy
+#### Create Product Bundle
+#### Product Description Quality Analysis
+#### Customer Churn Prediction
+#### Seller Response Rate And Changes To Comments
+#### Finding Topics Using Comments
+#### Important Factors In a Good Product
+#### Customer Journay
+
+### Fraud Detection
+#### Fake Product Detection
+#### Spam Comments Detection
+#### Review Evaluation System
+
+### Credit Systems
+#### Seller Reputation Analysis
+#### Seller Performance Evaluation

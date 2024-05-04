@@ -6,6 +6,7 @@ knitr::opts_chunk$set(cache = TRUE)
 load_libraries <- function() {
   library(readr)
   library(dplyr)
+  library(ggplot2)
 }
 load_libraries()
 ```
@@ -94,24 +95,70 @@ comments$true_to_size_rate %>% unique() # is fit or not
 ## Ideas
 ### Predictions
 #### Product Recommendation System
+
+```{r}
+# colnames(comments) # don't have "user id" thing. cannot know what each user likes.
+# colnames(products)
+```
+
+<pre>
++ Needs New Data : 8
++ Trivial        : 0
++ Vague Goal     : 5
++ Boring Idea    : 0
++ Sum            : 13
+</pre>
+
 #### Sentiment Analysis of Comments
-#### Product Rating Prediction
-#### Price Optimization
-#### Demand Forcasting
-#### Product Similarity
-#### Product Rating Lifecycle
-#### Trends in Seasons
-#### Automated Price Categorization Using NLP
-#### Product Return Prediction
+It helps you set competitor benchmarks, track your performance based on customer satisfaction, get product insights, and manage your brand reputation. The trick is to know how to leverage these customer comments and social media chatter and convert them into relevant, actionable insights. In this article, we tell you how.
+
+Goad: Summary of the weak points for each product. 
+
+```{r}
+comments$body[1:50] %>% View()
+# Checking number of comments per each product. If it is not much, we possibly cannot rely on the results.
+colnames(comments)
+comments %>%
+  count(product_id) %>%
+  arrange(desc(n)) %>%
+  head(10) # Maximumn number of comments per product => 400
+
+comments %>%
+  count(product_id) %>%
+  arrange(desc(n)) %>%
+  ggplot(aes(y = n)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0, 50))
+```
+
+<pre>
++ Needs New Data : 8
++ Trivial        : 0
++ Vague Goal     : 5
++ Boring Idea    : 0
++ Sum            : 13
+</pre>
+
+#### Product Popularity/Profit Prediction
+Based on the all the factors (price, description, trends, and ...), give an estimation of 
+the sales! 
+
+#### Price/Description Optimization
+```{r}
+colnames(products)
+```
+Suggesting an optimal price/description for a product to acheive maximum profit.
+
 #### Product Being Fake Matters?
-#### Similar Product Analysis
-#### Historical Events Effect On Market
-#### Outliers Analysis (in Product and Comments) (For Detecting Fraud)
 
 ### Financial
 #### Price Elasticity of Demand
 #### Analysis Of Stock Out
 #### Products With High Return
+#### Demand Forcasting
+#### Similar Product Analysis
+Analysis on the correlation between products that are substitue or antisubstitue
+
 
 ### Marketing 
 #### Customer Segmentation
@@ -122,7 +169,8 @@ comments$true_to_size_rate %>% unique() # is fit or not
 #### Seller Response Rate And Changes To Comments
 #### Finding Topics Using Comments
 #### Important Factors In a Good Product
-#### Customer Journay
+#### Effect Of Sanction On Digikala on the Purchases
+#### Trends in Seasons
 
 ### Fraud Detection
 #### Fake Product Detection

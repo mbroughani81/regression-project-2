@@ -109,6 +109,7 @@ convert_to_georgian <- function(comments) {
   created_at_parsed <- do.call(lapply(created_at_uniq, fun), what = c)
   created_at_m <- setNames(created_at_parsed, created_at_uniq)
   new_created_at <- map(comments$created_at, ~ created_at_m[[.x]])
+  new_created_at <- do.call(new_created_at, what = c)
   comments$created_at_greg <- new_created_at
   return(comments)
 }
@@ -246,6 +247,15 @@ Suggesting an optimal price/description for a product to acheive maximum profit.
 #### Product Being Fake Matters?
 
 #### Analysis On Unimportant Comments
+```{r}
+# Checking the number of comments timeseries
+colnames(comments)
+comments$title
+comments %>%
+  count(created_at_greg) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = 1))
+```
 
 ### Financial
 #### Price Elasticity of Demand

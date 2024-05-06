@@ -245,13 +245,14 @@ Suggesting an optimal price/description for a product to acheive maximum profit.
 
 #### Product Being Fake Matters?
 
+#### Analysis On Unimportant Comments
+
 ### Financial
 #### Price Elasticity of Demand
 #### Analysis Of Stock Out
 #### Products With High Return
 #### Demand Forcasting
 #### Similar Product Analysis
-Analysis on the correlation between products that are substitue or antisubstitue
 
 
 ### Marketing 

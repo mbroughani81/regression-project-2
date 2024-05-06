@@ -7,6 +7,9 @@ load_libraries <- function() {
   library(readr)
   library(dplyr)
   library(ggplot2)
+  library(jalcal)
+  library(furrr)
+  library(purrr)
 }
 load_libraries()
 ```
@@ -33,6 +36,84 @@ rename_columns <- function(df) {
     )
 }
 products <- rename_columns(products)
+
+comments %>% nrow()
+
+created_at <- comments$created_at %>% unique()
+fun <- function(x) {
+  x <- gsub("فروردین", "1", x)
+  x <- gsub("اردیبهشت", "2", x)
+  x <- gsub("خرداد", "3", x)
+  x <- gsub("تیر", "4", x)
+  x <- gsub("مرداد", "5", x)
+  x <- gsub("شهریور", "6", x)
+  x <- gsub("مهر", "7", x)
+  x <- gsub("آبان", "8", x)
+  x <- gsub("آذر", "9", x)
+  x <- gsub("دی", "10", x)
+  x <- gsub("بهمن", "11", x)
+  x <- gsub("اسفند", "12", x)
+  dd <- strsplit(x, " +")[[1]]
+  jal2greg(
+    as.numeric(dd[3]),
+    as.numeric(dd[2]),
+    as.numeric(dd[1])
+  )
+}
+
+created_at_m <- do.call(lapply(created_at, fun), what = c)
+
+ll <- list()
+
+length(result_list)
+for (i in 1:length(result_list)) {
+  ll[created_at[i]] <- result_list[i]
+}
+ll
+
+x %>% map(function(x) {
+  dd <- strsplit(x, " +")[[1]]
+  print(dd)
+  jal2greg(
+    as.numeric(dd[3]),
+    as.numeric(dd[2]),
+    as.numeric(dd[1])
+  )
+})
+length(created_at)
+created_at
+
+convert_to_georgian <- function(comments) {
+  print("???")
+  created_at_uniq <- comments$created_at %>% unique()
+  fun <- function(x) {
+    x <- gsub("فروردین", "1", x)
+    x <- gsub("اردیبهشت", "2", x)
+    x <- gsub("خرداد", "3", x)
+    x <- gsub("تیر", "4", x)
+    x <- gsub("مرداد", "5", x)
+    x <- gsub("شهریور", "6", x)
+    x <- gsub("مهر", "7", x)
+    x <- gsub("آبان", "8", x)
+    x <- gsub("آذر", "9", x)
+    x <- gsub("دی", "10", x)
+    x <- gsub("بهمن", "11", x)
+    x <- gsub("اسفند", "12", x)
+    dd <- strsplit(x, " +")[[1]]
+    jal2greg(
+      as.numeric(dd[3]),
+      as.numeric(dd[2]),
+      as.numeric(dd[1])
+    )
+  }
+  created_at_parsed <- do.call(lapply(created_at_uniq, fun), what = c)
+  created_at_m <- setNames(created_at_parsed, created_at_uniq)
+  new_created_at <- map(comments$created_at, ~ created_at_m[[.x]])
+  comments$created_at_greg <- new_created_at
+  return(comments)
+}
+comments <- comments %>%
+  convert_to_georgian()
 ```
 
 #### Hmmm ...
@@ -92,6 +173,12 @@ comments$seller_code[1:10] # what is this?
 comments$true_to_size_rate %>% unique() # is fit or not
 ```
 
+## General Insights About Data
+
+```{r}
+# Clean
+```
+
 ## Ideas
 ### Predictions
 #### Product Recommendation System
@@ -115,7 +202,7 @@ It helps you set competitor benchmarks, track your performance based on customer
 Goad: Summary of the weak points for each product. 
 
 ```{r}
-comments$body[1:50] %>% View()
+comments$body[1:10]
 # Checking number of comments per each product. If it is not much, we possibly cannot rely on the results.
 colnames(comments)
 comments %>%
@@ -146,6 +233,13 @@ the sales!
 #### Price/Description Optimization
 ```{r}
 colnames(products)
+colnames(comments)
+comments %>% nrow()
+comments$id %>%
+  unique() %>%
+  length()
+filter(comments, grepl("موجود", body)) %>%
+  tail(20)
 ```
 Suggesting an optimal price/description for a product to acheive maximum profit.
 

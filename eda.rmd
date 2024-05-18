@@ -10,111 +10,68 @@ load_libraries <- function() {
   library(jalcal)
   library(furrr)
   library(purrr)
+  library(lubridate)
 }
 load_libraries()
 ```
 
 ```{r}
-products <- read_csv("data/digikala-products.csv")
-comments <- read_csv("data/digikala-comments.csv")
+# products <- read_csv("data/digikala-products.csv")
+# comments <- read_csv("data/digikala-comments.csv")
+load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
+load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
 ```
 
 #### Products - rename columns 
 
 ```{r}
-rename_columns <- function(df) {
-  df %>%
-    rename(
-      rate = Rate,
-      rate_cnt = Rate_cnt,
-      category_1 = Category1,
-      category_2 = Category2,
-      brand = Brand,
-      price = Price,
-      seller = Seller,
-      is_fake = Is_Fake
-    )
-}
-products <- rename_columns(products)
+# $$rename_columns <- function(df) {
+#   df %>%
+#     rename(
+#       rate = Rate,
+#       rate_cnt = Rate_cnt,
+#       category_1 = Category1,
+#       category_2 = Category2,
+#       brand = Brand,
+#       price = Price,
+#       seller = Seller,
+#       is_fake = Is_Fake
+#     )
+# }
+# products <- rename_columns(products)
 
-comments %>% nrow()
-
-created_at <- comments$created_at %>% unique()
-fun <- function(x) {
-  x <- gsub("فروردین", "1", x)
-  x <- gsub("اردیبهشت", "2", x)
-  x <- gsub("خرداد", "3", x)
-  x <- gsub("تیر", "4", x)
-  x <- gsub("مرداد", "5", x)
-  x <- gsub("شهریور", "6", x)
-  x <- gsub("مهر", "7", x)
-  x <- gsub("آبان", "8", x)
-  x <- gsub("آذر", "9", x)
-  x <- gsub("دی", "10", x)
-  x <- gsub("بهمن", "11", x)
-  x <- gsub("اسفند", "12", x)
-  dd <- strsplit(x, " +")[[1]]
-  jal2greg(
-    as.numeric(dd[3]),
-    as.numeric(dd[2]),
-    as.numeric(dd[1])
-  )
-}
-
-created_at_m <- do.call(lapply(created_at, fun), what = c)
-
-ll <- list()
-
-length(result_list)
-for (i in 1:length(result_list)) {
-  ll[created_at[i]] <- result_list[i]
-}
-ll
-
-x %>% map(function(x) {
-  dd <- strsplit(x, " +")[[1]]
-  print(dd)
-  jal2greg(
-    as.numeric(dd[3]),
-    as.numeric(dd[2]),
-    as.numeric(dd[1])
-  )
-})
-length(created_at)
-created_at
-
-convert_to_georgian <- function(comments) {
-  print("???")
-  created_at_uniq <- comments$created_at %>% unique()
-  fun <- function(x) {
-    x <- gsub("فروردین", "1", x)
-    x <- gsub("اردیبهشت", "2", x)
-    x <- gsub("خرداد", "3", x)
-    x <- gsub("تیر", "4", x)
-    x <- gsub("مرداد", "5", x)
-    x <- gsub("شهریور", "6", x)
-    x <- gsub("مهر", "7", x)
-    x <- gsub("آبان", "8", x)
-    x <- gsub("آذر", "9", x)
-    x <- gsub("دی", "10", x)
-    x <- gsub("بهمن", "11", x)
-    x <- gsub("اسفند", "12", x)
-    dd <- strsplit(x, " +")[[1]]
-    jal2greg(
-      as.numeric(dd[3]),
-      as.numeric(dd[2]),
-      as.numeric(dd[1])
-    )
-  }
-  created_at_parsed <- do.call(lapply(created_at_uniq, fun), what = c)
-  created_at_m <- setNames(created_at_parsed, created_at_uniq)
-  new_created_at <- map(comments$created_at, ~ created_at_m[[.x]])
-  new_created_at <- do.call(new_created_at, what = c)
-  comments$created_at_greg <- new_created_at
-  return(comments)
-}
-comments <- comments %>%
-  convert_to_georgian()
+# convert_to_georgian <- function(comments) {
+#   print("???")
+#   created_at_uniq <- comments$created_at %>% unique()
+#   fun <- function(x) {
+#     x <- gsub("فروردین", "1", x)
+#     x <- gsub("اردیبهشت", "2", x)
+#     x <- gsub("خرداد", "3", x)
+#     x <- gsub("تیر", "4", x)
+#     x <- gsub("مرداد", "5", x)
+#     x <- gsub("شهریور", "6", x)
+#     x <- gsub("مهر", "7", x)
+#     x <- gsub("آبان", "8", x)
+#     x <- gsub("آذر", "9", x)
+#     x <- gsub("دی", "10", x)
+#     x <- gsub("بهمن", "11", x)
+#     x <- gsub("اسفند", "12", x)
+#     dd <- strsplit(x, " +")[[1]]
+#     jal2greg(
+#       as.numeric(dd[3]),
+#       as.numeric(dd[2]),
+#       as.numeric(dd[1])
+#     )
+#   }
+#   created_at_parsed <- do.call(lapply(created_at_uniq, fun), what = c)
+#   created_at_m <- setNames(created_at_parsed, created_at_uniq)
+#   new_created_at <- map(comments$created_at, ~ created_at_m[[.x]])
+#   new_created_at <- do.call(new_created_at, what = c)
+#   comments$created_at_greg <- new_created_at
+#   return(comments)
+# }
+# comments <- comments %>%
+#   convert_to_georgian()
 ```
 
 #### Hmmm ...
@@ -176,10 +133,6 @@ comments$true_to_size_rate %>% unique() # is fit or not
 
 ## General Insights About Data
 
-```{r}
-# Clean
-```
-
 ## Ideas
 ### Predictions
 #### Product Recommendation System
@@ -227,11 +180,7 @@ comments %>%
 + Sum            : 13
 </pre>
 
-#### Product Popularity/Profit Prediction
-Based on the all the factors (price, description, trends, and ...), give an estimation of 
-the sales! 
-
-#### Price/Description Optimization
+#### Stock Out
 ```{r}
 colnames(products)
 colnames(comments)
@@ -239,22 +188,73 @@ comments %>% nrow()
 comments$id %>%
   unique() %>%
   length()
-filter(comments, grepl("موجود", body)) %>%
-  tail(20)
+comments %>%
+  filter(grepl("موجود", body)) %>%
+  group_by(product_id) %>%
+  summarise(cnt = n()) %>%
+  ungroup() %>%
+  arrange(cnt)
 ```
 Suggesting an optimal price/description for a product to acheive maximum profit.
 
 #### Product Being Fake Matters?
 
-#### Analysis On Unimportant Comments
-```{r}
-# Checking the number of comments timeseries
-colnames(comments)
-comments$title
+#### Analysis On Fake Comments
+```{r, eval=FALSE}
+p <- comments %>%
+  filter(nchar(body) > 20) %>%
+  group_by(body) %>%
+  summarise(
+    cnt = n(),
+    pruduct_cnt = length(unique(product_id))
+  ) %>%
+  ungroup() %>%
+  arrange(cnt)
+
+p %>%
+  tail(500) %>%
+  head(50)
+
+p %>%
+  tail(5000) %>%
+  head(20)
+
+bb <- "چاپ عالی ،ترجمه خوب،جنس‌ کاغذ خوب،قیمت عالی،بسته بندی عالی، سالم و تمیز، ممنونم"
+
+gg <- "کتاب خوبیه نویسنده قوی ولی کاغذش کمی ضعیفه مطالعه اش رو به همه توصیه میکنم"
+
+hh <- "قیمت کتاب ها در دیجی کالا واقعا عالی هست"
+hh_2 <- "چاپ و صحافی خوب"
+
 comments %>%
-  count(created_at_greg) %>%
+  filter(body == hh) %>%
+  select(id, body, product_id, created_at_greg) %>%
+  View()
+# 2023-07-18
+# 1806641
+p_ids <- (comments %>%
+  filter(body == bb))$product_id
+p_ids %>% length()
+comments %>%
+  filter(product_id %in% p_ids[6:10]) %>%
+  count(created_at_greg, product_id) %>%
   ggplot() +
-  geom_point(aes(x = created_at_greg, y = 1))
+  geom_point(aes(x = created_at_greg, y = n)) +
+  facet_grid(. ~ product_id)
+comments %>%
+  filter(product_id == 1806641) %>%
+  arrange(created_at_greg) %>%
+  View()
+
+
+p_ids <- (comments %>%
+  filter(body == gg))$product_id
+
+colnames(products)
+
+products %>%
+  filter(id %in% p_ids)
+p_ids
 ```
 
 ### Financial

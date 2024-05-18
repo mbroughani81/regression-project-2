@@ -1,0 +1,46 @@
+```{r setup}
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r}
+load_libraries <- function() {
+  library(readr)
+  library(dplyr)
+  library(ggplot2)
+  library(jalcal)
+  library(furrr)
+  library(purrr)
+  library(lubridate)
+}
+load_libraries()
+```
+
+```{r}
+# products <- read_csv("data/digikala-products.csv")
+# comments <- read_csv("data/digikala-comments.csv")
+load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
+load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
+```
+
+```{r}
+p1 <- comments %>%
+  filter(nchar(body) > 50) %>%
+  group_by(body) %>%
+  summarise(
+    cnt = n(),
+    pruduct_cnt = length(unique(product_id))
+  ) %>%
+  ungroup() %>%
+  arrange(desc(cnt))
+
+p1 %>%
+  head(20) %>%
+  View()
+
+p1 %>%
+  summarize()
+ggplot2() +
+  geom_point(x = cnt, y = )
+```
+
+

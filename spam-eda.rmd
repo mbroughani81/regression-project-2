@@ -6,6 +6,8 @@ knitr::opts_chunk$set(cache = TRUE)
 load_libraries <- function() {
   library(readr)
   library(dplyr)
+  library(tidyr)
+  library(tibble)
   library(ggplot2)
   library(jalcal)
   library(furrr)
@@ -23,7 +25,35 @@ load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comme
 ```
 
 ```{r}
-p1 <- comments %>%
+nrow(products)
+products %>% View()
+colnames(products)
+```
+
+Working with last 1 mil row to have better performance
+```{r}
+# sampling
+# cleaning
+# adding the position in comment list (order by date)
+comments_sampled <- comments %>%
+  filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11) %>%
+  mutate(
+    title = replace(title, title == "nan", ""),
+    title = replace(title, is.na(title), ""),
+    body = replace(body, body == "nan", "")
+  ) %>%
+  group_by(product_id) %>%
+  mutate(row_in_asc_product_comments = min_rank(created_at_greg)) %>%
+  mutate(row_in_desc_product_comments = min_rank(desc(created_at_greg))) %>%
+  ungroup()
+u_products <- products %>%
+  distinct(id, .keep_all = TRUE)
+comments_sampled <-
+  left_join(comments_sampled, u_products, by = join_by(product_id == id))
+```
+
+```{r}
+comments_cnt <- comments_sampled %>%
   filter(nchar(body) > 50) %>%
   group_by(body) %>%
   summarise(
@@ -32,15 +62,112 @@ p1 <- comments %>%
   ) %>%
   ungroup() %>%
   arrange(desc(cnt))
+# plots
+comments_cnt %>%
+  filter(cnt >= 5) %>%
+  count(cnt) %>%
+  ggplot() +
+  geom_point(aes(x = cnt, y = n))
+comments_cnt %>%
+  filter(cnt >= 5) %>%
+  count(cnt) %>%
+  mutate(lg_n = log(n, 10)) %>%
+  ggplot() +
+  geom_point(aes(x = cnt, y = lg_n))
+```
 
-p1 %>%
-  head(20) %>%
+# Logistic Regression
+1. using duplicate comments as spams 
+```{r}
+duplicate_comments <- comments_cnt %>%
+  filter(cnt >= 5) %>%
+  select(body, cnt)
+duplicate_comments_list <- duplicate_comments[["body"]]
+# labeling comments with duplicate body as spam
+labeled_comments_sampled <- comments_sampled %>%
+  mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
+# Checking if labelling is correct
+labeled_comments_sampled %>%
+  filter(body == duplicate_comments_list[[5]]) %>%
   View()
+```
 
-p1 %>%
-  summarize()
-ggplot2() +
-  geom_point(x = cnt, y = )
+2. adding additional features (text-based)
+```{r, eval=FALSE}
+labeled_comments_sampled %>% View()
+colnames(labeled_comments_sampled) %>% View()
+labeled_comments_sampled %>%
+  head(20) %>%
+  select(rate) %>%
+  View() # user rate
+labeled_comments_sampled %>%
+  head(20) %>%
+  select(recommendation_status) %>%
+  View() # no_idea, recommended, not_recommended, nan
+labeled_comments_sampled %>%
+  head(500) %>%
+  select(is_buyer) %>%
+  View() # true false
+labeled_comments_sampled %>%
+  head(50) %>%
+  select(advantages) %>%
+  View() # nan, or an array
+labeled_comments_sampled %>%
+  head(50) %>%
+  select(likes) %>,%
+  View() # integer
+labeled_comments_sampled %>%
+  head(50) %>%
+  select(seller_title) %>%
+  View()
+```
+
+```{r}
+comments_2 <- labeled_comments_sampled %>%
+  mutate(
+    F1_likes = likes,
+    F2_dislikes = dislikes,
+    F3_likes_dislikes_ratio = likes / (dislikes + 1),
+    F4_title_length = nchar(title),
+    F5_body_length = nchar(body),
+    F6_asc_order = row_in_asc_product_comments,
+    F7_desc_order = row_in_desc_product_comments,
+    F8_product_price = price,
+    F9_product_rating = rate.y
+  )
 ```
 
 
+3. creating the model
+
+```{r}
+lg_model <- glm(
+  spam ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio + F4_title_length +
+    F5_body_length + F6_asc_order + F7_desc_order + F8_product_price +
+    F9_product_rating,
+  data = comments_2,
+  family = binomial
+)
+summary(lg_model)
+lg_probs <- predict(lg_model, type = "response", na.action = stop)
+length(lg_probs)
+nrow(comments_2)
+ll <- length(lg_probs)
+lg_pred <- rep(FALSE, ll)
+lg_pred[lg_probs > 0.1] <- TRUE
+summary(lg_pred)
+new_comments_2 <- add_column(.data = comments_2, prediction = lg_pred)
+new_comments_2 %>%
+  filter(prediction == TRUE) %>%
+  View()
+new_comments_2 %>%
+  summarise_all(sum) %>%
+  View()
+spams <- new_comments_2 %>% filter(prediction == TRUE)
+xx <- spams$body
+length(xx)
+View(xx)
+comments_2 %>%
+  filter(body == xx[3]) %>%
+  View()
+```

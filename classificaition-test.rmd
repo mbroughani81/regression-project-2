@@ -1,0 +1,36 @@
+```{r setup}
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r}
+load_libraries <- function() {
+    library(readr)
+    library(dplyr)
+    library(ggplot2)
+    library(jalcal)
+    library(furrr)
+    library(purrr)
+    library(lubridate)
+}
+load_libraries()
+```
+
+```{r}
+default <- read_csv("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/slides/datasets/Default.csv")
+smarket <- read.csv("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/slides/datasets/Smarket.csv", stringsAsFactors = T) # Direction column should be factor
+dim(smarket)
+
+summary(smarket)
+View(smarket)
+cor(smarket[, -9])
+
+
+
+
+glm.fits <- glm(
+    Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume,
+    data = smarket,
+    family = binomial
+)
+summary(glm.fits)
+```

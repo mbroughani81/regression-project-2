@@ -36,6 +36,7 @@ Working with last 1 mil row to have better performance
 # cleaning
 # adding the position in comment list (order by date)
 comments_sampled <- comments %>%
+  filter(nchar(body) > 50) %>%
   filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11) %>%
   mutate(
     title = replace(title, title == "nan", ""),
@@ -50,11 +51,13 @@ u_products <- products %>%
   distinct(id, .keep_all = TRUE)
 comments_sampled <-
   left_join(comments_sampled, u_products, by = join_by(product_id == id))
+comments_sampled %>%
+  head(20) %>%
+  View()
 ```
 
 ```{r}
 comments_cnt <- comments_sampled %>%
-  filter(nchar(body) > 50) %>%
   group_by(body) %>%
   summarise(
     cnt = n(),
@@ -74,15 +77,23 @@ comments_cnt %>%
   mutate(lg_n = log(n, 10)) %>%
   ggplot() +
   geom_point(aes(x = cnt, y = lg_n))
+comments_cnt %>%
+  head(200) %>%
+  View()
+comments_sampled %>% nrow()
+comments_cnt %>%
+  filter(cnt >= 3) %>%
+  nrow()
 ```
 
 # Logistic Regression
 1. using duplicate comments as spams 
 ```{r}
 duplicate_comments <- comments_cnt %>%
-  filter(cnt >= 5) %>%
+  filter(cnt >= 3) %>%
   select(body, cnt)
 duplicate_comments_list <- duplicate_comments[["body"]]
+length(duplicate_comments_list)
 # labeling comments with duplicate body as spam
 labeled_comments_sampled <- comments_sampled %>%
   mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
@@ -161,13 +172,6 @@ new_comments_2 %>%
   filter(prediction == TRUE) %>%
   View()
 new_comments_2 %>%
-  summarise_all(sum) %>%
-  View()
-spams <- new_comments_2 %>% filter(prediction == TRUE)
-xx <- spams$body
-length(xx)
-View(xx)
-comments_2 %>%
-  filter(body == xx[3]) %>%
-  View()
+  filter(spam == TRUE) %>%
+  nrow()
 ```

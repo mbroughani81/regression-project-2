@@ -166,8 +166,53 @@ TP / (TP + FN)
 
 # More analysis
 
-Checking the FP and FN, and also the spams, 
+## Checking the FP and FN, and also the spams, 
 
-```{r}
+Checking the spams, that are based on duplication
+```{r, eval=FALSE}
+# number of is_buyers
+duplicate_comments %>%
+  head(100) %>%
+  View()
+```
 
+Timeseries of pos/neg comments on a product
+
+```{r, eval=FALSE}
+product_comments_ts <- comments_2 %>%
+  arrange(created_at_greg) %>%
+  # select(body, rate.x) %>%
+  # head(20) %>% View()
+  # colnames()
+  mutate(
+    recom_status = case_match(
+      rate.x,
+      c(0, 1) ~ "Bad",
+      c(2, 3) ~ "Normal",
+      c(4, 5) ~ "Good"
+    )
+  ) %>%
+  group_by(product_id) %>%
+  mutate(day_count = length(unique(created_at_greg))) %>%
+  ungroup() %>%
+  group_by(product_id, created_at_greg, recom_status) %>%
+  summarise(
+    cnt = n(),
+    day_count = day_count
+  ) %>%
+  ungroup() %>%
+  arrange(desc(day_count))
+
+product_comments_ts %>%
+  head(100) %>%
+  View()
+
+p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>% unique()
+p_ids <- p_ids[1:5]
+p_ids
+product_comments_ts %>%
+  filter(product_id %in% p_ids) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  facet_grid(product_id ~ .)
 ```

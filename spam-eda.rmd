@@ -10,9 +10,10 @@ load_libraries <- function() {
   library(tibble)
   library(ggplot2)
   library(jalcal)
-  library(furrr)
   library(purrr)
   library(lubridate)
+  library(caret)
+  library(pROC)
 }
 load_libraries()
 ```
@@ -24,19 +25,18 @@ load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/produ
 load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
 ```
 
-```{r}
-nrow(products)
-products %>% View()
-colnames(products)
-```
-
 Working with last 1 mil row to have better performance
+
+```{r}
+model_param_body_length <- 20
+model_param_cnt_threshold <- 3
+```
 ```{r}
 # sampling
 # cleaning
 # adding the position in comment list (order by date)
-comments_sampled <- comments %>%
-  filter(nchar(body) > 50) %>%
+sampled_comments <- comments %>%
+  filter(nchar(body) > model_param_body_length) %>%
   filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11) %>%
   mutate(
     title = replace(title, title == "nan", ""),
@@ -46,93 +46,44 @@ comments_sampled <- comments %>%
   group_by(product_id) %>%
   mutate(row_in_asc_product_comments = min_rank(created_at_greg)) %>%
   mutate(row_in_desc_product_comments = min_rank(desc(created_at_greg))) %>%
+  ungroup() %>%
+  group_by(created_at_greg, body) %>%
+  mutate(body_cnt_in_day = n()) %>%
   ungroup()
 u_products <- products %>%
   distinct(id, .keep_all = TRUE)
-comments_sampled <-
-  left_join(comments_sampled, u_products, by = join_by(product_id == id))
-comments_sampled %>%
-  head(20) %>%
-  View()
+sampled_comments <-
+  left_join(sampled_comments, u_products, by = join_by(product_id == id))
 ```
 
 ```{r}
-comments_cnt <- comments_sampled %>%
+comments_cnt <- sampled_comments %>%
   group_by(body) %>%
   summarise(
-    cnt = n(),
-    pruduct_cnt = length(unique(product_id))
+    cnt = n()
   ) %>%
   ungroup() %>%
   arrange(desc(cnt))
-# plots
-comments_cnt %>%
-  filter(cnt >= 5) %>%
-  count(cnt) %>%
-  ggplot() +
-  geom_point(aes(x = cnt, y = n))
-comments_cnt %>%
-  filter(cnt >= 5) %>%
-  count(cnt) %>%
-  mutate(lg_n = log(n, 10)) %>%
-  ggplot() +
-  geom_point(aes(x = cnt, y = lg_n))
-comments_cnt %>%
-  head(200) %>%
-  View()
-comments_sampled %>% nrow()
-comments_cnt %>%
-  filter(cnt >= 3) %>%
-  nrow()
 ```
 
 # Logistic Regression
 1. using duplicate comments as spams 
 ```{r}
 duplicate_comments <- comments_cnt %>%
-  filter(cnt >= 3) %>%
-  select(body, cnt)
+  filter(cnt >= model_param_cnt_threshold) %>%
+  select(cnt, body)
 duplicate_comments_list <- duplicate_comments[["body"]]
-length(duplicate_comments_list)
 # labeling comments with duplicate body as spam
-labeled_comments_sampled <- comments_sampled %>%
+labeled_comments_sampled <- sampled_comments %>%
   mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
 # Checking if labelling is correct
+View(duplicate_comments)
 labeled_comments_sampled %>%
-  filter(body == duplicate_comments_list[[5]]) %>%
+  filter(body == duplicate_comments_list[[1]]) %>%
   View()
 ```
 
-2. adding additional features (text-based)
-```{r, eval=FALSE}
-labeled_comments_sampled %>% View()
-colnames(labeled_comments_sampled) %>% View()
-labeled_comments_sampled %>%
-  head(20) %>%
-  select(rate) %>%
-  View() # user rate
-labeled_comments_sampled %>%
-  head(20) %>%
-  select(recommendation_status) %>%
-  View() # no_idea, recommended, not_recommended, nan
-labeled_comments_sampled %>%
-  head(500) %>%
-  select(is_buyer) %>%
-  View() # true false
-labeled_comments_sampled %>%
-  head(50) %>%
-  select(advantages) %>%
-  View() # nan, or an array
-labeled_comments_sampled %>%
-  head(50) %>%
-  select(likes) %>,%
-  View() # integer
-labeled_comments_sampled %>%
-  head(50) %>%
-  select(seller_title) %>%
-  View()
-```
-
+2. creating the model
 ```{r}
 comments_2 <- labeled_comments_sampled %>%
   mutate(
@@ -144,34 +95,76 @@ comments_2 <- labeled_comments_sampled %>%
     F6_asc_order = row_in_asc_product_comments,
     F7_desc_order = row_in_desc_product_comments,
     F8_product_price = price,
-    F9_product_rating = rate.y
+    F9_product_rating = rate.y,
+    F10_body_cnt_in_day = body_cnt_in_day
   )
-```
-
-
-3. creating the model
-
-```{r}
 lg_model <- glm(
   spam ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio + F4_title_length +
     F5_body_length + F6_asc_order + F7_desc_order + F8_product_price +
-    F9_product_rating,
+    F9_product_rating + F10_body_cnt_in_day,
   data = comments_2,
   family = binomial
 )
-summary(lg_model)
-lg_probs <- predict(lg_model, type = "response", na.action = stop)
-length(lg_probs)
-nrow(comments_2)
-ll <- length(lg_probs)
-lg_pred <- rep(FALSE, ll)
-lg_pred[lg_probs > 0.1] <- TRUE
-summary(lg_pred)
-new_comments_2 <- add_column(.data = comments_2, prediction = lg_pred)
-new_comments_2 %>%
-  filter(prediction == TRUE) %>%
+get_logistic_pred <- function(mod, pos = "Yes", neg = "No", cut = 0.5) {
+  probs <- predict(mod, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+test_pred_10 <- get_logistic_pred(lg_model, cut = 0.1)
+test_pred_50 <- get_logistic_pred(lg_model, cut = 0.5)
+test_pred_90 <- get_logistic_pred(lg_model, cut = 0.9)
+test_pred_10 %>%
+  head(20) %>%
   View()
-new_comments_2 %>%
+
+spam_chr <- ifelse(comments_2$spam, "Yes", "No")
+test_tab_10 <- table(predicted = test_pred_10, actual = spam_chr)
+test_tab_50 <- table(predicted = test_pred_50, actual = spam_chr)
+test_tab_90 <- table(predicted = test_pred_90, actual = spam_chr)
+test_tab_50 %>%
+  head(20) %>%
+  View()
+
+comments_2 %>%
   filter(spam == TRUE) %>%
   nrow()
+test_tab_10
+
+# Will not work if there are "True"/"False" predictions
+test_con_mat_10 <- confusionMatrix(test_tab_10, positive = "Yes")
+test_con_mat_50 <- confusionMatrix(test_tab_50, positive = "Yes")
+test_con_mat_90 <- confusionMatrix(test_tab_90, positive = "Yes")
+
+test_prob <- predict(lg_model, type = "response")
+test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
+
+length(lg_probs) == nrow(comments_2)
+# predict
+lg_probs <- predict(lg_model, type = "response", na.action = stop)
+lg_pred <- rep(FALSE, length(lg_probs))
+lg_pred[lg_probs > 0.1] <- TRUE
+# creating new_comments_2, comments_2 with the prediction
+new_comments_2 <- add_column(.data = comments_2, prediction = lg_pred)
+new_comments_2 %>%
+  filter(spam == TRUE) %>%
+  head(500) %>%
+  View()
+new_comments_2 %>%
+  filter(spam == FALSE) %>%
+  head(500) %>%
+  View()
+TP <- new_comments_2 %>%
+  filter(spam == TRUE & prediction == TRUE) %>%
+  nrow()
+TN <- new_comments_2 %>%
+  filter(spam == FALSE & prediction == FALSE) %>%
+  nrow()
+FP <- new_comments_2 %>%
+  filter(spam == FALSE & prediction == TRUE) %>%
+  nrow()
+FN <- new_comments_2 %>%
+  filter(spam == TRUE & prediction == FALSE) %>%
+  nrow()
+accuracy <- (TP + TN) / (TP + TN + FP + FN)
+precision <- TP / (TP + FP)
+print(accuracy)
 ```

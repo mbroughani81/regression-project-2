@@ -76,6 +76,9 @@ duplicate_comments_list <- duplicate_comments[["body"]]
 # labeling comments with duplicate body as spam
 labeled_comments_sampled <- sampled_comments %>%
   mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
+```
+
+```{r, eval=FALSE}
 # Checking if labelling is correct
 View(duplicate_comments)
 labeled_comments_sampled %>%
@@ -105,6 +108,9 @@ lg_model <- glm(
   data = comments_2,
   family = binomial
 )
+test_prob <- predict(lg_model, type = "response")
+test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
+
 get_logistic_pred <- function(mod, pos = "Yes", neg = "No", cut = 0.5) {
   probs <- predict(mod, type = "response")
   ifelse(probs > cut, pos, neg)
@@ -112,35 +118,17 @@ get_logistic_pred <- function(mod, pos = "Yes", neg = "No", cut = 0.5) {
 test_pred_10 <- get_logistic_pred(lg_model, cut = 0.1)
 test_pred_50 <- get_logistic_pred(lg_model, cut = 0.5)
 test_pred_90 <- get_logistic_pred(lg_model, cut = 0.9)
-test_pred_10 %>%
-  head(20) %>%
-  View()
-
 spam_chr <- ifelse(comments_2$spam, "Yes", "No")
 test_tab_10 <- table(predicted = test_pred_10, actual = spam_chr)
 test_tab_50 <- table(predicted = test_pred_50, actual = spam_chr)
 test_tab_90 <- table(predicted = test_pred_90, actual = spam_chr)
-test_tab_50 %>%
-  head(20) %>%
-  View()
-
-comments_2 %>%
-  filter(spam == TRUE) %>%
-  nrow()
-test_tab_10
-
 # Will not work if there are "True"/"False" predictions
 test_con_mat_10 <- confusionMatrix(test_tab_10, positive = "Yes")
 test_con_mat_50 <- confusionMatrix(test_tab_50, positive = "Yes")
 test_con_mat_90 <- confusionMatrix(test_tab_90, positive = "Yes")
-
-test_prob <- predict(lg_model, type = "response")
-test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
-
 # some important numbers
 comments_2 %>%
-  nrow() %>%
-  print() # all
+  nrow()
 actual_true <- comments_2 %>%
   filter(spam == TRUE) %>%
   nrow()
@@ -149,8 +137,6 @@ actual_false <- comments_2 %>%
   nrow()
 actual_true
 actual_false
-
-
 # finding the threshold
 lg_probs <- predict(lg_model, type = "response", na.action = stop)
 length(lg_probs) == nrow(comments_2)
@@ -158,14 +144,6 @@ lg_pred <- rep(FALSE, length(lg_probs))
 lg_pred[lg_probs > 0.15] <- TRUE
 # creating new_comments_2, comments_2 with the prediction
 new_comments_2 <- add_column(.data = comments_2, prediction = lg_pred)
-new_comments_2 %>%
-  filter(spam == TRUE) %>%
-  head(500) %>%
-  View()
-new_comments_2 %>%
-  filter(spam == FALSE) %>%
-  head(500) %>%
-  View()
 TP <- new_comments_2 %>%
   filter(spam == TRUE & prediction == TRUE) %>%
   nrow()
@@ -178,6 +156,14 @@ FP <- new_comments_2 %>%
 FN <- new_comments_2 %>%
   filter(spam == TRUE & prediction == FALSE) %>%
   nrow()
-print(TN / (TN + FP))
-print(TP / (TP + FN))
+TN / (TN + FP)
+TP / (TP + FN)
+```
+
+# More analysis
+
+Checking the FP and FN, and also the spams, 
+
+```{r}
+
 ```

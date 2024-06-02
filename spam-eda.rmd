@@ -35,14 +35,15 @@ model_param_cnt_threshold <- 3
 # sampling
 # cleaning
 # adding the position in comment list (order by date)
-sampled_comments <- comments %>%
-  filter(nchar(body) > model_param_body_length) %>%
+comments_1 <- comments %>%
   filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11) %>%
   mutate(
     title = replace(title, title == "nan", ""),
     title = replace(title, is.na(title), ""),
     body = replace(body, body == "nan", "")
-  ) %>%
+  )
+sampled_comments <- comments_1 %>%
+  filter(nchar(body) > model_param_body_length) %>%
   group_by(product_id) %>%
   mutate(row_in_asc_product_comments = min_rank(created_at_greg)) %>%
   mutate(row_in_desc_product_comments = min_rank(desc(created_at_greg))) %>%
@@ -74,7 +75,7 @@ duplicate_comments <- comments_cnt %>%
   select(cnt, body)
 duplicate_comments_list <- duplicate_comments[["body"]]
 # labeling comments with duplicate body as spam
-labeled_comments_sampled <- sampled_comments %>%
+labeled_sampled_comments <- sampled_comments %>%
   mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
 ```
 
@@ -89,7 +90,7 @@ labeled_comments_sampled %>%
 2. creating the model
 ```{r}
 # creatingn model
-comments_2 <- labeled_comments_sampled %>%
+comments_2 <- labeled_sampled_comments %>%
   mutate(
     F1_likes = likes,
     F2_dislikes = dislikes,
@@ -179,17 +180,36 @@ duplicate_comments %>%
 Timeseries of pos/neg comments on a product
 
 ```{r, eval=FALSE}
-product_comments_ts <- comments_2 %>%
+comments %>%
+  head(50) %>%
+  select(rate, body) %>%
+  View()
+arrange(desc(day_count))
+
+product_comments_ts %>%
+  head(100) %>%
+  View()
+
+comments$rate %>%
+  unique() %>%
+  sort() %>%
+  View()
+comments %>%
+  filter(rate == 2500) %>%
+  head(10) %>%
+  View()
+comments %>%
+  filter(is_buyer == FALSE) %>%
+  head(20) %>%
+  View()
+
+product_comments_ts <- comments %>%
   arrange(created_at_greg) %>%
-  # select(body, rate.x) %>%
-  # head(20) %>% View()
-  # colnames()
   mutate(
-    recom_status = case_match(
-      rate.x,
-      c(0, 1) ~ "Bad",
-      c(2, 3) ~ "Normal",
-      c(4, 5) ~ "Good"
+    recom_status = case_when(
+      rate >= 0 & rate < 2 ~ "Bad",
+      rate >= 2 & rate < 4 ~ "Normal",
+      rate >= 4 ~ "Good"
     )
   ) %>%
   group_by(product_id) %>%
@@ -203,16 +223,64 @@ product_comments_ts <- comments_2 %>%
   ungroup() %>%
   arrange(desc(day_count))
 
+p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>%
+  unique()
 product_comments_ts %>%
-  head(100) %>%
-  View()
-
-p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>% unique()
-p_ids <- p_ids[1:5]
-p_ids
-product_comments_ts %>%
-  filter(product_id %in% p_ids) %>%
+  filter(product_id %in% p_ids[11:20]) %>%
   ggplot() +
   geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
   facet_grid(product_id ~ .)
+product_comments_ts %>%
+  filter(product_id %in% p_ids[1:5]) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  facet_grid(recom_status ~ product_id)
+
+
+# 1. sudden Bad Rates
+product_comments_ts %>%
+  filter(product_id %in% c(
+    629761, 76937, 82138, 153035, 170694, 298695,
+    37424, 185959
+  )) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+# What is the reason for sudden bad rates?
+# 37424, 185959: between 2021-10 to 2022-6, all comments have rate == 0
+product_comments_ts %>%
+  filter(product_id == 185959) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+comments %>%
+  filter(product_id == 185959) %>%
+  select(created_at_greg, rate, is_buyer, body) %>%
+  arrange(created_at_greg) %>%
+  View()
+
+# 2. after a time (start of 2022), the number of ratings with bad rating generally decresses
+#    reason: after 2022, number of zero rates become much less!
+product_comments_ts %>%
+  filter(product_id %in% c(799907, 684093, 317249)) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  facet_grid(product_id ~ .)
+product_comments_ts %>%
+  filter(product_id == 684093) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+comments %>%
+  filter(product_id == 684093) %>%
+  select(created_at_greg, rate, is_buyer, body) %>%
+  arrange(created_at_greg) %>%
+  View()
+# 317249: after a time, less rates no zero rates are placed
+# zero rates???
+comments %>%
+  filter(rate == 0) %>%
+  count(created_at_greg) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = n))
 ```

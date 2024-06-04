@@ -332,16 +332,21 @@ Type 2: brand related
 
 ```{r}
 set.seed(1)
-sample_count <- 200
+sample_count <- 10000
 labeling_sample <- comments %>%
   sample_n(sample_count, replace = FALSE)
+labeling_sample <- left_join(
+  labeling_sample,
+  u_products,
+  by = join_by(product_id == id)
+)
 labeling_sample$type_1_non_related <- FALSE
 labeling_sample$type_2_brand_related <- FALSE
 
 change_id_type_1 <- function(labeling_sample, ids, cnt) {
   cur_id <- ids[cnt]
   labeling_sample <- labeling_sample %>%
-    mutate(type_1_non_related = ifelse(id == cur_id, TRUE, type_1_non_related))
+    mutate(type_1_non_related = ifelse(id == cur_id, TRUE, type_2_brand_related))
   x <- select(labeling_sample, id, type_1_non_related)
   save(
     x,
@@ -351,10 +356,13 @@ change_id_type_1 <- function(labeling_sample, ids, cnt) {
 }
 
 ids <- labeling_sample$id
-cnt <- 3
+cnt <- 1
 ids[cnt]
 labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 labeling_sample %>%
   filter(id == ids[cnt]) %>%
+  View()
+labeling_sample %>%
+  head(5) %>%
   View()
 ```

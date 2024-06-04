@@ -55,9 +55,6 @@ u_products <- products %>%
   distinct(id, .keep_all = TRUE)
 sampled_comments <-
   left_join(sampled_comments, u_products, by = join_by(product_id == id))
-```
-
-```{r}
 comments_cnt <- sampled_comments %>%
   group_by(body) %>%
   summarise(
@@ -84,6 +81,22 @@ labeled_sampled_comments <- sampled_comments %>%
 View(duplicate_comments)
 labeled_comments_sampled %>%
   filter(body == duplicate_comments_list[[1]]) %>%
+  View()
+# Checking the number of spams per product.
+# If a product has a lot of spams, smth is wrong!
+labeled_sampled_comments %>%
+  group_by(product_id) %>%
+  summarise(spam_cnt = sum(spam)) %>%
+  ungroup() %>%
+  arrange(desc(spam_cnt)) %>%
+  View()
+labeled_sampled_comments %>%
+  filter(product_id == 7734200) %>%
+  select(spam, is_buyer, created_at_greg, body) %>%
+  View()
+labeled_sampled_comments %>%
+  filter(product_id == 9644579) %>%
+  select(spam, created_at_greg, body) %>%
   View()
 ```
 
@@ -203,7 +216,11 @@ comments %>%
   head(20) %>%
   View()
 
-product_comments_ts <- comments %>%
+# Filtering the comments with zero rate, to see the anomalies better
+comments_3 <- comments %>%
+  filter(rate != 0)
+
+product_comments_ts <- comments_3 %>% # comments %>%
   arrange(created_at_greg) %>%
   mutate(
     recom_status = case_when(
@@ -213,12 +230,8 @@ product_comments_ts <- comments %>%
     )
   ) %>%
   group_by(product_id) %>%
-  mutate(day_count = length(unique(created_at_greg))) %>%
-  ungroup() %>%
-  group_by(product_id, created_at_greg, recom_status) %>%
-  summarise(
-    cnt = n(),
-    day_count = day_count
+  mutate(
+    day_count = length(unique(created_at_greg))
   ) %>%
   ungroup() %>%
   arrange(desc(day_count))
@@ -226,17 +239,29 @@ product_comments_ts <- comments %>%
 p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>%
   unique()
 product_comments_ts %>%
-  filter(product_id %in% p_ids[11:20]) %>%
+  filter(product_id %in% p_ids[1:5]) %>%
   ggplot() +
   geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
   facet_grid(product_id ~ .)
 product_comments_ts %>%
-  filter(product_id %in% p_ids[1:5]) %>%
+  filter(product_id %in% p_ids[55:60]) %>% ## 55-60
   ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
   facet_grid(recom_status ~ product_id)
-
-
+# sudden only pos/neg change
+# just one month increase in comment
+## 956949 2437016, 506914, 770216 , 2145003, 1167347, 2448826
+product_comments_ts %>%
+  filter(product_id %in% c(956949, 770216, 82078)) %>% ## 55-60
+  ggplot() +
+  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
+  facet_grid(recom_status ~ product_id)
+product_comments_ts %>%
+  filter(product_id == 956949) %>%
+  select(created_at_greg, rate, body) %>%
+  View()
+```
+```{r}
 # 1. sudden Bad Rates
 product_comments_ts %>%
   filter(product_id %in% c(
@@ -283,4 +308,18 @@ comments %>%
   count(created_at_greg) %>%
   ggplot() +
   geom_point(aes(x = created_at_greg, y = n))
+```
+
+```{r}
+# Fixing comments. No zero rate??
+comments %>%
+  group_by(created_at_greg) %>%
+  summarise(
+    cnt_zero = sum(rate == 0),
+    cnt_all = length(rate),
+    q = cnt_zero / cnt_all
+  ) %>%
+  ungroup() %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = q))
 ```

@@ -365,7 +365,7 @@ cnt
     View()
 }
 
-load("type_1_754.rda")
+load("type_1_818.rda")
 x %>%
   filter(id == ids[cnt]) %>%
   View()

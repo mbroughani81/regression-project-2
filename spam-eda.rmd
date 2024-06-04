@@ -346,8 +346,8 @@ labeling_sample$type_2_brand_related <- FALSE
 change_id_type_1 <- function(labeling_sample, ids, cnt) {
   cur_id <- ids[cnt]
   labeling_sample <- labeling_sample %>%
-    mutate(type_1_non_related = ifelse(id == cur_id, TRUE, type_2_brand_related))
-  x <- select(labeling_sample, id, type_1_non_related)
+    mutate(type_2_brand_related = ifelse(id == cur_id, TRUE, type_2_brand_related))
+  x <- select(labeling_sample, id, type_1_non_related, type_2_brand_related)
   save(
     x,
     file = paste("type_1_", cnt, ".rda", sep = "")
@@ -356,13 +356,19 @@ change_id_type_1 <- function(labeling_sample, ids, cnt) {
 }
 
 ids <- labeling_sample$id
-cnt <- 1
-ids[cnt]
-labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
-labeling_sample %>%
+cnt
+{
+  cnt <- cnt + 1
+  labeling_sample %>%
+    filter(id == ids[cnt]) %>%
+    select(body, title_fa, is_buyer, type_1_non_related, type_2_brand_related) %>%
+    View()
+}
+
+load("type_1_754.rda")
+x %>%
   filter(id == ids[cnt]) %>%
   View()
-labeling_sample %>%
-  head(5) %>%
-  View()
+
+labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 ```

@@ -25,6 +25,8 @@ load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/produ
 load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
 comments <- comments %>%
   distinct(id, .keep_all = TRUE)
+u_products <- products %>%
+  distinct(id, .keep_all = TRUE)
 ```
 
 Working with last 1 mil row to have better performance
@@ -53,8 +55,6 @@ sampled_comments <- comments_1 %>%
   group_by(created_at_greg, body) %>%
   mutate(body_cnt_in_day = n()) %>%
   ungroup()
-u_products <- products %>%
-  distinct(id, .keep_all = TRUE)
 sampled_comments <-
   left_join(sampled_comments, u_products, by = join_by(product_id == id))
 comments_cnt <- sampled_comments %>%
@@ -335,14 +335,17 @@ set.seed(1)
 sample_count <- 10000
 labeling_sample <- comments %>%
   sample_n(sample_count, replace = FALSE)
+labeling_sample$type_1_non_related <- FALSE
+labeling_sample$type_2_brand_related <- FALSE
+```
+
+Manual Labeling
+```{r}
 labeling_sample <- left_join(
   labeling_sample,
   u_products,
   by = join_by(product_id == id)
 )
-labeling_sample$type_1_non_related <- FALSE
-labeling_sample$type_2_brand_related <- FALSE
-
 change_id_type_1 <- function(labeling_sample, ids, cnt) {
   cur_id <- ids[cnt]
   labeling_sample <- labeling_sample %>%
@@ -368,24 +371,19 @@ cnt
 labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 ```
 
+
 Model for detecting type 1 and type 2
+
 ```{r}
-load("type_1_1006.rda")
-xx <- left_join(x, labeling_sample, by = join_by(id == id))
-xx %>%
+load("labels_2.rda")
+labeling_sample %>%
   head(20) %>%
   View()
-xx %>%
-  filter(type_2_brand_related == TRUE) %>%
-  select(body) %>%
-  View()
-type_2_labels <- xx %>% select(body, id, type_2_brand_related)
-type_2_labels %>%
-  filter(type_2_brand_related == TRUE) %>%
-  select(body) %>%
-  View()
-type_2_labels <- type_2_labels %>% select(id, type_2_brand_related)
+label
+type_2_labels
 type_2_labels$type_2_brand_related %>% sum()
-type_2_labels %>% nrow()
-save(type_2_labels, file = "labels_2.rda")
+type_2_labels %>% colnames()
+comments_labeled <- left_join(type_2_labels, comments, by = join_by(id == id))
+comments_labeled %>% colnames()
 ```
+

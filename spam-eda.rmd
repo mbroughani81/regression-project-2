@@ -365,10 +365,27 @@ cnt
     View()
 }
 
-load("type_1_818.rda")
-x %>%
-  filter(id == ids[cnt]) %>%
-  View()
-
 labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
+```
+
+Model for detecting type 1 and type 2
+```{r}
+load("type_1_1006.rda")
+xx <- left_join(x, labeling_sample, by = join_by(id == id))
+xx %>%
+  head(20) %>%
+  View()
+xx %>%
+  filter(type_2_brand_related == TRUE) %>%
+  select(body) %>%
+  View()
+type_2_labels <- xx %>% select(body, id, type_2_brand_related)
+type_2_labels %>%
+  filter(type_2_brand_related == TRUE) %>%
+  select(body) %>%
+  View()
+type_2_labels <- type_2_labels %>% select(id, type_2_brand_related)
+type_2_labels$type_2_brand_related %>% sum()
+type_2_labels %>% nrow()
+save(type_2_labels, file = "labels_2.rda")
 ```

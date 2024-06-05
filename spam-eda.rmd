@@ -375,16 +375,6 @@ non_product_words_mention_percent <- function(body, seller_title, brand) {
   # print(word_count)
   return(sum_counts / (word_count + 1))
 }
-
-bb1 <- " خیلی وقته منتظر سایز۴۶م ولی موجود نمیشه. لطفا موجودکنید عزیزان دیانی و دیجی کالا"
-bb2 <- " خیلی وقته منتظر سایز۴۶م ولی موجود نمیشه. لطفا موجودکنید عزیزان  و دیجی کالا"
-bb3 <- ""
-
-cc <- c("a", "b", "c")
-str_count(bb, "موجود")
-non_product_words_mention_percent(c(bb1, bb2, bb3), cc)
-non_product_words_mention_percent(c("a b c d", "b b", "c d"), c("a", "b", "c"))
-cnt
 ```
 
 Manual Labeling

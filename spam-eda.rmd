@@ -14,6 +14,7 @@ load_libraries <- function() {
   library(lubridate)
   library(caret)
   library(pROC)
+  library(stringr)
 }
 load_libraries()
 ```
@@ -21,12 +22,25 @@ load_libraries()
 ```{r}
 # products <- read_csv("data/digikala-products.csv")
 # comments <- read_csv("data/digikala-comments.csv")
-load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
-load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
+# load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
+# load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
+load("/mnt/uni/8/Regression/Project-2/data/products.rda")
+load("/mnt/uni/8/Regression/Project-2/data/comments.rda")
+
 comments <- comments %>%
   distinct(id, .keep_all = TRUE)
 u_products <- products %>%
   distinct(id, .keep_all = TRUE)
+comments <- comments %>%
+  group_by(product_id) %>%
+  mutate(row_in_asc_product_comments = min_rank(created_at_greg)) %>%
+  mutate(row_in_desc_product_comments = min_rank(desc(created_at_greg))) %>%
+  ungroup() %>%
+  mutate(
+    title = replace(title, title == "nan", ""),
+    title = replace(title, is.na(title), ""),
+    body = replace(body, body == "nan", "")
+  )
 ```
 
 Working with last 1 mil row to have better performance
@@ -40,12 +54,7 @@ model_param_cnt_threshold <- 3
 # cleaning
 # adding the position in comment list (order by date)
 comments_1 <- comments %>%
-  filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11) %>%
-  mutate(
-    title = replace(title, title == "nan", ""),
-    title = replace(title, is.na(title), ""),
-    body = replace(body, body == "nan", "")
-  )
+  filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11)
 sampled_comments <- comments_1 %>%
   filter(nchar(body) > model_param_body_length) %>%
   group_by(product_id) %>%
@@ -335,12 +344,54 @@ set.seed(1)
 sample_count <- 10000
 labeling_sample <- comments %>%
   sample_n(sample_count, replace = FALSE)
-labeling_sample$type_1_non_related <- FALSE
-labeling_sample$type_2_brand_related <- FALSE
+
+non_product_words_mention_percent <- function(body, seller_title, brand) {
+  commons <- c(
+    "دیجیکالا",
+    "دیجی کالا",
+    "ارسال",
+    "بسته بندی",
+    "برند",
+    "مارک",
+    "تصویر",
+    "فروشنده",
+    "موجود",
+    "اشتباه",
+    "اشتباهی",
+    "انقضا"
+  )
+  sum_counts <- 0
+  for (str in commons) {
+    sum_counts <- sum_counts + str_count(body, str)
+  }
+  # print(sum_counts)
+  fff <- function(x1, x2) {
+    return(str_count(x1, x2))
+  }
+  sum_counts <- sum_counts + mapply(fff, body, seller_title)
+  sum_counts <- sum_counts + mapply(fff, body, brand)
+  word_count <- str_count(body, "\\w+")
+  # print(sum_counts)
+  # print(word_count)
+  return(sum_counts / (word_count + 1))
+}
+
+bb1 <- " خیلی وقته منتظر سایز۴۶م ولی موجود نمیشه. لطفا موجودکنید عزیزان دیانی و دیجی کالا"
+bb2 <- " خیلی وقته منتظر سایز۴۶م ولی موجود نمیشه. لطفا موجودکنید عزیزان  و دیجی کالا"
+bb3 <- ""
+
+cc <- c("a", "b", "c")
+str_count(bb, "موجود")
+non_product_words_mention_percent(c(bb1, bb2, bb3), cc)
+non_product_words_mention_percent(c("a b c d", "b b", "c d"), c("a", "b", "c"))
+cnt
 ```
 
 Manual Labeling
+
 ```{r}
+labeling_sample$type_1_non_related <- FALSE
+labeling_sample$type_2_brand_related <- FALSE
 labeling_sample <- left_join(
   labeling_sample,
   u_products,
@@ -349,7 +400,11 @@ labeling_sample <- left_join(
 change_id_type_1 <- function(labeling_sample, ids, cnt) {
   cur_id <- ids[cnt]
   labeling_sample <- labeling_sample %>%
-    mutate(type_2_brand_related = ifelse(id == cur_id, TRUE, type_2_brand_related))
+    mutate(type_2_brand_related = ifelse(
+      id == cur_id,
+      TRUE,
+      type_2_brand_related
+    ))
   x <- select(labeling_sample, id, type_1_non_related, type_2_brand_related)
   save(
     x,
@@ -372,18 +427,127 @@ labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 ```
 
 
-Model for detecting type 1 and type 2
+## Model for detecting type 1 and type 2
 
+1. Using all the dataset
 ```{r}
 load("labels_2.rda")
-labeling_sample %>%
-  head(20) %>%
-  View()
-label
-type_2_labels
 type_2_labels$type_2_brand_related %>% sum()
-type_2_labels %>% colnames()
-comments_labeled <- left_join(type_2_labels, comments, by = join_by(id == id))
+comments_labeled <- left_join(
+  comments,
+  type_2_labels,
+  by = join_by(id == id)
+)
+comments_labeled <- comments_labeled %>%
+  mutate(type_2_brand_related = replace_na(type_2_brand_related, FALSE))
+comments_labeled <- left_join(
+  comments_labeled,
+  u_products,
+  by = join_by(product_id == id)
+)
+comments_labeled %>% colnames()
+comments_labeled %>% nrow()
+```
+
+```{r}
+# creatingn model
+comments_4 <- comments_labeled %>%
+  mutate(
+    F1_likes = likes,
+    F2_dislikes = dislikes,
+    F3_likes_dislikes_ratio = likes / (dislikes + 1),
+    F4_title_length = nchar(title),
+    F5_body_length = nchar(body),
+    F6_asc_order = row_in_asc_product_comments,
+    F7_desc_order = row_in_desc_product_comments,
+    F8_product_price = price,
+    F9_product_rating = rate.y,
+  )
+lg_model <- glm(
+  type_2_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
+    F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
+    F8_product_price + F9_product_rating,
+  data = comments_4,
+  family = binomial
+)
+# roc
+nrow(comments_4)
+test_prob <- predict(lg_model, type = "response")
+length(test_prob)
+nrow(comments_4)
+test_roc <- roc(comments_4$type_2_brand_related ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+2. Using sampled dataset
+```{r}
+load("labels_2.rda")
+type_2_labels$type_2_brand_related %>% sum()
+comments_labeled <- left_join(
+  type_2_labels,
+  labeling_sample,
+  by = join_by(id == id)
+)
+comments_labeled <- left_join(
+  comments_labeled,
+  u_products,
+  by = join_by(product_id == id)
+)
 comments_labeled %>% colnames()
 ```
 
+```{r}
+# creating model
+
+comments_labeled %>%
+  colnames() %>%
+  View()
+comments_labeled %>%
+  head(5) %>%
+  View()
+comments %>%
+  head(5) %>%
+  View()
+u_products %>%
+  head(5) %>%
+  View()
+
+comments_labeled %>%
+  filter(type_2_brand_related == TRUE) %>%
+  View()
+comments_4 <- comments_labeled %>%
+  mutate(
+    F1_likes = likes,
+    F2_dislikes = dislikes,
+    F3_likes_dislikes_ratio = likes / (dislikes + 1),
+    F4_title_length = nchar(title),
+    F5_body_length = nchar(body),
+    F6_asc_order = row_in_asc_product_comments,
+    F7_desc_order = row_in_desc_product_comments,
+    F8_product_price = price,
+    F9_product_rating = rate.y,
+    F10_non_product_words_mention_percent = non_product_words_mention_percent(
+      body,
+      seller_title,
+      brand
+    )
+    # F11_cosine_sim_with_product_desc = 0
+  )
+comments_4 %>%
+  select(F10_non_product_words_mention_percent) %>%
+  head(10) %>%
+  View()
+comments_4 %>%
+  select(type_2_brand_related) %>%
+  distinct()
+lg_model <- glm(
+  type_2_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
+    F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
+    F8_product_price + F9_product_rating +
+    F10_non_product_words_mention_percent,
+  data = comments_4,
+  family = binomial
+)
+# roc
+test_prob <- predict(lg_model, type = "response")
+test_roc <- roc(comments_4$type_2_brand_related ~ test_prob, plot = TRUE, print.auc = TRUE)
+```

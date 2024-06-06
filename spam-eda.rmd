@@ -24,8 +24,8 @@ load_libraries()
 # comments <- read_csv("data/digikala-comments.csv")
 # load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
 # load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
-load("/mnt/uni/8/Regression/Project-2/data/products.rda")
-load("/mnt/uni/8/Regression/Project-2/data/comments.rda")
+load("/mnt/nvme0n1p6/uni/8/Regression/Project-2/data/products.rda")
+load("/mnt/nvme0n1p6/uni/8/Regression/Project-2/data/comments.rda")
 
 comments <- comments %>%
   distinct(id, .keep_all = TRUE)
@@ -419,61 +419,22 @@ labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 
 ## Model for detecting type 1 and type 2
 
-1. Using all the dataset
+Using sampled dataset
+
 ```{r}
+load("labels_1.rda")
 load("labels_2.rda")
+type_1_labels %>% colnames()
+type_2_labels %>% colnames()
+type_1_labels$type_1_non_related %>% sum()
 type_2_labels$type_2_brand_related %>% sum()
 comments_labeled <- left_join(
-  comments,
+  type_1_labels,
   type_2_labels,
   by = join_by(id == id)
 )
-comments_labeled <- comments_labeled %>%
-  mutate(type_2_brand_related = replace_na(type_2_brand_related, FALSE))
 comments_labeled <- left_join(
   comments_labeled,
-  u_products,
-  by = join_by(product_id == id)
-)
-comments_labeled %>% colnames()
-comments_labeled %>% nrow()
-```
-
-```{r}
-# creatingn model
-comments_4 <- comments_labeled %>%
-  mutate(
-    F1_likes = likes,
-    F2_dislikes = dislikes,
-    F3_likes_dislikes_ratio = likes / (dislikes + 1),
-    F4_title_length = nchar(title),
-    F5_body_length = nchar(body),
-    F6_asc_order = row_in_asc_product_comments,
-    F7_desc_order = row_in_desc_product_comments,
-    F8_product_price = price,
-    F9_product_rating = rate.y,
-  )
-lg_model <- glm(
-  type_2_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
-    F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
-    F8_product_price + F9_product_rating,
-  data = comments_4,
-  family = binomial
-)
-# roc
-nrow(comments_4)
-test_prob <- predict(lg_model, type = "response")
-length(test_prob)
-nrow(comments_4)
-test_roc <- roc(comments_4$type_2_brand_related ~ test_prob, plot = TRUE, print.auc = TRUE)
-```
-
-2. Using sampled dataset
-```{r}
-load("labels_2.rda")
-type_2_labels$type_2_brand_related %>% sum()
-comments_labeled <- left_join(
-  type_2_labels,
   labeling_sample,
   by = join_by(id == id)
 )
@@ -485,25 +446,19 @@ comments_labeled <- left_join(
 comments_labeled %>% colnames()
 ```
 
-```{r}
-# creating model
-
+```{r, eval=FALSE}
 comments_labeled %>%
-  colnames() %>%
+  filter(type_1_non_related == TRUE) %>%
+  select(body) %>%
   View()
-comments_labeled %>%
-  head(5) %>%
-  View()
-comments %>%
-  head(5) %>%
-  View()
-u_products %>%
-  head(5) %>%
-  View()
-
 comments_labeled %>%
   filter(type_2_brand_related == TRUE) %>%
+  select(body) %>%
   View()
+```
+
+```{r}
+# creating model
 comments_4 <- comments_labeled %>%
   mutate(
     F1_likes = likes,
@@ -522,13 +477,9 @@ comments_4 <- comments_labeled %>%
     )
     # F11_cosine_sim_with_product_desc = 0
   )
-comments_4 %>%
-  select(F10_non_product_words_mention_percent) %>%
-  head(10) %>%
-  View()
-comments_4 %>%
-  select(type_2_brand_related) %>%
-  distinct()
+```
+
+```{r}
 lg_model <- glm(
   type_2_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
     F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
@@ -540,4 +491,18 @@ lg_model <- glm(
 # roc
 test_prob <- predict(lg_model, type = "response")
 test_roc <- roc(comments_4$type_2_brand_related ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+```{r}
+lg_model <- glm(
+  type_1_non_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
+    F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
+    F8_product_price + F9_product_rating +
+    F10_non_product_words_mention_percent,
+  data = comments_4,
+  family = binomial
+)
+# roc
+test_prob <- predict(lg_model, type = "response")
+test_roc <- roc(comments_4$type_1_non_related ~ test_prob, plot = TRUE, print.auc = TRUE)
 ```

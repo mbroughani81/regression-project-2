@@ -22,11 +22,10 @@ load_libraries()
 ```{r}
 # products <- read_csv("data/digikala-products.csv")
 # comments <- read_csv("data/digikala-comments.csv")
-# load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/products.rda")
-# load("/media/mbroughani81/500A6DE90A6DCC92/uni/8/Regression/Project-2/data/comments.rda")
-load("C:/Users/Zahra/Desktop/Data Analysis/Digikala/products.rda")
-load("C:/Users/Zahra/Desktop/Data Analysis/Digikala/comments.rda")
-
+# load("C:/Users/Zahra/Desktop/Data Analysis/Digikala/products.rda")
+# load("C:/Users/Zahra/Desktop/Data Analysis/Digikala/comments.rda")
+load("/mnt/nvme0n1p6/uni/8/Regression/Project-2/data/products.rda")
+load("/mnt/nvme0n1p6/uni/8/Regression/Project-2/data/comments.rda")
 comments <- comments %>%
   distinct(id, .keep_all = TRUE)
 u_products <- products %>%
@@ -50,9 +49,6 @@ model_param_body_length <- 20
 model_param_cnt_threshold <- 3
 ```
 ```{r}
-# sampling
-# cleaning
-# adding the position in comment list (order by date)
 comments_1 <- comments %>%
   filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11)
 sampled_comments <- comments_1 %>%
@@ -76,7 +72,8 @@ comments_cnt <- sampled_comments %>%
 ```
 
 # Logistic Regression
-1. using duplicate comments as spams 
+
+1. using duplicate comments as new feature 
 ```{r}
 duplicate_comments <- comments_cnt %>%
   filter(cnt >= model_param_cnt_threshold) %>%
@@ -84,271 +81,38 @@ duplicate_comments <- comments_cnt %>%
 duplicate_comments_list <- duplicate_comments[["body"]]
 # labeling comments with duplicate body as spam
 labeled_sampled_comments <- sampled_comments %>%
-  mutate(spam = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
-
-View(head(labeled_sampled_comments, 100))
+  mutate(is_duplicate = map_lgl(body, ~ any(.x %in% duplicate_comments_list)))
 ```
 
 ```{r, eval=FALSE}
 # Checking if labelling is correct
 View(duplicate_comments)
-labeled_comments_sampled %>%
+labeled_sampled_comments %>%
   filter(body == duplicate_comments_list[[1]]) %>%
   View()
-# Checking the number of spams per product.
-# If a product has a lot of spams, smth is wrong!
+# Checking the number of duplicates per product.
+# If a product has a lot of duplicates, smth is wrong!
 labeled_sampled_comments %>%
   group_by(product_id) %>%
-  summarise(spam_cnt = sum(spam)) %>%
+  summarise(duplicate_cnt = sum(is_duplicate)) %>%
   ungroup() %>%
-  arrange(desc(spam_cnt)) %>%
+  arrange(desc(duplicate_cnt)) %>%
   View()
 labeled_sampled_comments %>%
   filter(product_id == 7734200) %>%
-  select(spam, is_buyer, created_at_greg, body) %>%
+  select(is_duplicate, is_buyer, created_at_greg, body) %>%
   View()
 labeled_sampled_comments %>%
   filter(product_id == 9644579) %>%
-  select(spam, created_at_greg, body) %>%
+  select(is_duplicate, created_at_greg, body) %>%
   View()
 ```
 
 2. creating the model
-```{r}
-# creatingn model
-comments_2 <- labeled_sampled_comments %>%
-  mutate(
-    F1_likes = likes,
-    F2_dislikes = dislikes,
-    F3_likes_dislikes_ratio = likes / (dislikes + 1),
-    F4_title_length = nchar(title),
-    F5_body_length = nchar(body),
-    F6_asc_order = row_in_asc_product_comments,
-    F7_desc_order = row_in_desc_product_comments,
-    F8_product_price = price,
-    F9_product_rating = rate.y,
-    F10_body_cnt_in_day = body_cnt_in_day
-  )
-lg_model <- glm(
-  spam ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio + F4_title_length +
-    F5_body_length + F6_asc_order + F7_desc_order + F8_product_price +
-    F9_product_rating + F10_body_cnt_in_day,
-  data = comments_2,
-  family = binomial
-)
-# roc
-test_prob <- predict(lg_model, type = "response")
-test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
-# confusion matrix
-get_logistic_pred <- function(mod, pos = "Yes", neg = "No", cut = 0.5) {
-  probs <- predict(mod, type = "response")
-  ifelse(probs > cut, pos, neg)
-}
-test_pred_10 <- get_logistic_pred(lg_model, cut = 0.1)
-test_pred_50 <- get_logistic_pred(lg_model, cut = 0.5)
-test_pred_90 <- get_logistic_pred(lg_model, cut = 0.9)
-spam_chr <- ifelse(comments_2$spam, "Yes", "No")
-test_tab_10 <- table(predicted = test_pred_10, actual = spam_chr)
-test_tab_50 <- table(predicted = test_pred_50, actual = spam_chr)
-test_tab_90 <- table(predicted = test_pred_90, actual = spam_chr)
-# Will not work if there are "True"/"False" predictions
-test_con_mat_10 <- confusionMatrix(test_tab_10, positive = "Yes")
-test_con_mat_50 <- confusionMatrix(test_tab_50, positive = "Yes")
-test_con_mat_90 <- confusionMatrix(test_tab_90, positive = "Yes")
-# some important stats
-comments_2 %>%
-  nrow()
-actual_true <- comments_2 %>%
-  filter(spam == TRUE) %>%
-  nrow()
-actual_false <- comments_2 %>%
-  filter(spam == FALSE) %>%
-  nrow()
-actual_true
-actual_false
-# finding the threshold
-lg_probs <- predict(lg_model, type = "response", na.action = stop)
-length(lg_probs) == nrow(comments_2)
-lg_pred <- rep(FALSE, length(lg_probs))
-lg_pred[lg_probs > 0.15] <- TRUE
-new_comments_2 <- add_column(
-  .data = comments_2,
-  prediction = lg_pred
-) # creating new_comments_2, comments_2 with the prediction
-TP <- new_comments_2 %>%
-  filter(spam == TRUE & prediction == TRUE) %>%
-  nrow()
-TN <- new_comments_2 %>%
-  filter(spam == FALSE & prediction == FALSE) %>%
-  nrow()
-FP <- new_comments_2 %>%
-  filter(spam == FALSE & prediction == TRUE) %>%
-  nrow()
-FN <- new_comments_2 %>%
-  filter(spam == TRUE & prediction == FALSE) %>%
-  nrow()
-TN / (TN + FP)
-TP / (TP + FN)
-```
-
-# More analysis
-
-## Checking the FP and FN, and also the spams, 
-
-Checking the spams, that are based on duplication
-```{r, eval=FALSE}
-# number of is_buyers
-duplicate_comments %>%
-  head(100) %>%
-  View()
-```
-
-Timeseries of pos/neg comments on a product
-
-```{r, eval=FALSE}
-comments %>%
-  head(50) %>%
-  select(rate, body) %>%
-  View()
-arrange(desc(day_count))
-
-product_comments_ts %>%
-  head(100) %>%
-  View()
-
-comments$rate %>%
-  unique() %>%
-  sort() %>%
-  View()
-comments %>%
-  filter(rate == 2500) %>%
-  head(10) %>%
-  View()
-comments %>%
-  filter(is_buyer == FALSE) %>%
-  head(20) %>%
-  View()
-
-# Filtering the comments with zero rate, to see the anomalies better
-comments_3 <- comments %>%
-  filter(rate != 0)
-
-product_comments_ts <- comments_3 %>% # comments %>%
-  arrange(created_at_greg) %>%
-  mutate(
-    recom_status = case_when(
-      rate >= 0 & rate < 2 ~ "Bad",
-      rate >= 2 & rate < 4 ~ "Normal",
-      rate >= 4 ~ "Good"
-    )
-  ) %>%
-  group_by(product_id) %>%
-  mutate(
-    day_count = length(unique(created_at_greg))
-  ) %>%
-  ungroup() %>%
-  arrange(desc(day_count))
-
-p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>%
-  unique()
-product_comments_ts %>%
-  filter(product_id %in% p_ids[1:5]) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
-  facet_grid(product_id ~ .)
-product_comments_ts %>%
-  filter(product_id %in% p_ids[55:60]) %>% ## 55-60
-  ggplot() +
-  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
-  facet_grid(recom_status ~ product_id)
-# sudden only pos/neg change
-# just one month increase in comment
-## 956949 2437016, 506914, 770216 , 2145003, 1167347, 2448826
-product_comments_ts %>%
-  filter(product_id %in% c(956949, 770216, 82078)) %>% ## 55-60
-  ggplot() +
-  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
-  facet_grid(recom_status ~ product_id)
-product_comments_ts %>%
-  filter(product_id == 956949) %>%
-  select(created_at_greg, rate, body) %>%
-  View()
-```
-```{r}
-# 1. sudden Bad Rates
-product_comments_ts %>%
-  filter(product_id %in% c(
-    629761, 76937, 82138, 153035, 170694, 298695,
-    37424, 185959
-  )) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt)) +
-  facet_grid(recom_status ~ product_id)
-# What is the reason for sudden bad rates?
-# 37424, 185959: between 2021-10 to 2022-6, all comments have rate == 0
-product_comments_ts %>%
-  filter(product_id == 185959) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt)) +
-  facet_grid(recom_status ~ product_id)
-comments %>%
-  filter(product_id == 185959) %>%
-  select(created_at_greg, rate, is_buyer, body) %>%
-  arrange(created_at_greg) %>%
-  View()
-
-# 2. after a time (start of 2022), the number of ratings with bad rating generally decresses
-#    reason: after 2022, number of zero rates become much less!
-product_comments_ts %>%
-  filter(product_id %in% c(799907, 684093, 317249)) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
-  facet_grid(product_id ~ .)
-product_comments_ts %>%
-  filter(product_id == 684093) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = cnt)) +
-  facet_grid(recom_status ~ product_id)
-comments %>%
-  filter(product_id == 684093) %>%
-  select(created_at_greg, rate, is_buyer, body) %>%
-  arrange(created_at_greg) %>%
-  View()
-# 317249: after a time, less rates no zero rates are placed
-# zero rates???
-comments %>%
-  filter(rate == 0) %>%
-  count(created_at_greg) %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = n))
-```
 
 ```{r}
-# Fixing comments. No zero rate??
-comments %>%
-  group_by(created_at_greg) %>%
-  summarise(
-    cnt_zero = sum(rate == 0),
-    cnt_all = length(rate),
-    q = cnt_zero / cnt_all
-  ) %>%
-  ungroup() %>%
-  ggplot() +
-  geom_point(aes(x = created_at_greg, y = q))
-```
-
-Labeling a sample of comments.
-Type 1: non-related
-Type 2: brand related 
-
-```{r}
-set.seed(1)
-sample_count <- 10000
-labeling_sample <- comments %>%
-  sample_n(sample_count, replace = FALSE)
-
-
-brand_and_seller_name_mention_percent <- function(body, seller_title, brand){
+# helper functions
+brand_and_seller_name_mention_percent <- function(body, seller_title, brand) {
   fff <- function(x1, x2) {
     x2 <- gsub("\\+", "", x2)
     return(str_count(x1, x2))
@@ -360,7 +124,7 @@ brand_and_seller_name_mention_percent <- function(body, seller_title, brand){
   return(sum_counts / (word_count + 1))
 }
 
-commons_mention_percent <- function(body, commons){
+commons_mention_percent <- function(body, commons) {
   sum_counts <- 0
   for (str in commons) {
     sum_counts <- sum_counts + str_count(body, str)
@@ -370,131 +134,131 @@ commons_mention_percent <- function(body, commons){
 }
 
 brand_commons <- c(
-    "فروشنده",
-    "ارسال",
-    "مرجوع",
-    "ارجاع",
-    "عودت",
-    "برند",
-    "دیجی کالا",
-    "دیجیکالا",
-    "دیجی",
-    "ديجي كالا",
-    "ديجيكالا",
-    "ديجي",
-    "ارسال",
-    "مشتری",
-    "مشتري",
-    "مارک",
-    "تولید کننده",
-    "تولیدکننده",
-    "توليد کننده",
-    "توليدکننده",
-    "تولید کنندگان",
-    "تولیدکنندگان",
-    "توليد کنندگان",
-    "توليدکنندگان",
-    "فرستادن",
-    "فرستادن.",
-    "فرستاده",
-    "فرستاد",
-    "فرستاد.",
-    "نفرستادن",
-    "نفرستادن.",
-    "نفرستاده",
-    "نفرستاد",
-    "نفرستاد.",
-    "آوردن",
-    "آوردن.",
-    "رسید",
-    "رسيد",
-    "رسید.",
-    "رسيد.",
-    "بسته بندی",
-    "بسته بندي",
-    "بسته بندیش",
-    "بسته بنديش",
-    "وبسته بندی",
-    "سالم",
-    "پلمپ",
-    "پاره",
-    "پارگی",
-    "پارگي",
-    "شکسته",
-    "شکستگی",
-    "شکستگي",
-    "سالم",
-    "دستندرکاران",
-    "اشتباه",
-    "اشتباهی",
-    "اشتباهي",
-    "جعبه",
-    "تاریخ",
-    "تاريخ",
-    "تولید",
-    "توليد",
-    "انقضا",
-    "تاریخش گذشته",
-    "تاريخش گذشته",
-    "پاک شده",
-    "موجود",
-    "موجودش",
-    "موجودکنید",
-    "اضافه کنید",
-    "اضافه کنيد",
-    "اضافه کنید.",
-    "اضافه کنيد.",
-    "پیگیری",
-    "تو رو خدا",
-    "میخوام",
-    "ميخوام",
-    "میخوامش",
-    "ميخوامش",
-    "بیارین",
-    "بيارين",
-    "میخام",
-    "ميخام",
-    "میخامش",
-    "ميخامش",
-    "زودتر",
-    "زود تر",
-    "تاخیر",
-    "تاخير",
-    "باتاخیر",
-    "باتاخير",
-    "تأخیر",
-    "تأخير",
-    "به موقع",
-    "بموقع",
-    "به جای",
-    "به جاي",
-    "هماهنگی",
-    "هماهنگي",
-    "قیمت",
-    "قيمت",
-    "قیمتو",
-    "قيمتو",
-    "لطفا",
-    "لطفاً",
-    "خواهش",
-    "ممنون",
-    "مرسی",
-    "مرسي",
-    "تشکر",
-    "متشکر",
-    "متشکرم",
-    "قدردانی",
-    "قدرداني",
-    "قدر دانی",
-    "قدر داني",
-    "سپاسگزارم",
-    "سپاسگذارم",
-    "سپاسگزار",
-    "سپاسگذار",
-    "مچکرم",
-    "مچکر",
-    "تخفیف",
-    "تخفيف"
+  "فروشنده",
+  "ارسال",
+  "مرجوع",
+  "ارجاع",
+  "عودت",
+  "برند",
+  "دیجی کالا",
+  "دیجیکالا",
+  "دیجی",
+  "ديجي كالا",
+  "ديجيكالا",
+  "ديجي",
+  "ارسال",
+  "مشتری",
+  "مشتري",
+  "مارک",
+  "تولید کننده",
+  "تولیدکننده",
+  "توليد کننده",
+  "توليدکننده",
+  "تولید کنندگان",
+  "تولیدکنندگان",
+  "توليد کنندگان",
+  "توليدکنندگان",
+  "فرستادن",
+  "فرستادن.",
+  "فرستاده",
+  "فرستاد",
+  "فرستاد.",
+  "نفرستادن",
+  "نفرستادن.",
+  "نفرستاده",
+  "نفرستاد",
+  "نفرستاد.",
+  "آوردن",
+  "آوردن.",
+  "رسید",
+  "رسيد",
+  "رسید.",
+  "رسيد.",
+  "بسته بندی",
+  "بسته بندي",
+  "بسته بندیش",
+  "بسته بنديش",
+  "وبسته بندی",
+  "سالم",
+  "پلمپ",
+  "پاره",
+  "پارگی",
+  "پارگي",
+  "شکسته",
+  "شکستگی",
+  "شکستگي",
+  "سالم",
+  "دستندرکاران",
+  "اشتباه",
+  "اشتباهی",
+  "اشتباهي",
+  "جعبه",
+  "تاریخ",
+  "تاريخ",
+  "تولید",
+  "توليد",
+  "انقضا",
+  "تاریخش گذشته",
+  "تاريخش گذشته",
+  "پاک شده",
+  "موجود",
+  "موجودش",
+  "موجودکنید",
+  "اضافه کنید",
+  "اضافه کنيد",
+  "اضافه کنید.",
+  "اضافه کنيد.",
+  "پیگیری",
+  "تو رو خدا",
+  "میخوام",
+  "ميخوام",
+  "میخوامش",
+  "ميخوامش",
+  "بیارین",
+  "بيارين",
+  "میخام",
+  "ميخام",
+  "میخامش",
+  "ميخامش",
+  "زودتر",
+  "زود تر",
+  "تاخیر",
+  "تاخير",
+  "باتاخیر",
+  "باتاخير",
+  "تأخیر",
+  "تأخير",
+  "به موقع",
+  "بموقع",
+  "به جای",
+  "به جاي",
+  "هماهنگی",
+  "هماهنگي",
+  "قیمت",
+  "قيمت",
+  "قیمتو",
+  "قيمتو",
+  "لطفا",
+  "لطفاً",
+  "خواهش",
+  "ممنون",
+  "مرسی",
+  "مرسي",
+  "تشکر",
+  "متشکر",
+  "متشکرم",
+  "قدردانی",
+  "قدرداني",
+  "قدر دانی",
+  "قدر داني",
+  "سپاسگزارم",
+  "سپاسگذارم",
+  "سپاسگزار",
+  "سپاسگذار",
+  "مچکرم",
+  "مچکر",
+  "تخفیف",
+  "تخفيف"
 )
 
 #  "خیلی",
@@ -590,7 +354,398 @@ non_brand_commons <- c(
   "نساخت",
   "نساخت."
 )
-View(comments_labeled)
+```
+
+Model 1 (lg_model_1): spam = is_duplicate 
+Model 2 (lg_model_2): spam = is_duplicate and not is_buyer 
+
+```{r}
+comments_2 <- labeled_sampled_comments %>%
+  mutate(
+    spam = is_duplicate,
+    F1_likes = likes,
+    F2_dislikes = dislikes,
+    F3_likes_dislikes_ratio = likes / (dislikes + 1),
+    F4_title_length = nchar(title),
+    F5_body_length = nchar(body),
+    # F5_body_length = pmin(nchar(body), 70),
+    F6_advantages_length = nchar(advantages),
+    F7_disadvantages_length = nchar(disadvantages),
+    F8_asc_order = row_in_asc_product_comments,
+    F9_desc_order = row_in_desc_product_comments,
+    F10_product_price = price,
+    F11_product_rating = rate.y,
+    F12_review_rate = rate.x,
+    F13_deviation_from_product_rating = abs(rate.x * 20 - rate.y),
+    F14_number_of_rates = rate_cnt,
+    F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
+    F16_brand_commons = commons_mention_percent(body, brand_commons),
+    F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
+    F18_is_buyer = is_buyer
+  )
+lg_model_1 <- glm(
+  spam ~ F1_likes +
+    F2_dislikes +
+    F3_likes_dislikes_ratio +
+    F4_title_length +
+    F5_body_length +
+    F6_advantages_length +
+    F7_disadvantages_length +
+    F8_asc_order +
+    F9_desc_order +
+    F10_product_price +
+    F11_product_rating +
+    F12_review_rate +
+    # F13_deviation_from_product_rating +
+    F14_number_of_rates +
+    F15_brand_and_seller_mention_percent +
+    F16_brand_commons +
+    F17_non_brand_commons +
+    F18_is_buyer,
+  data = comments_2,
+  family = binomial
+)
+# roc
+test_prob <- predict(lg_model_1, type = "response")
+test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
+# check model
+summary(lg_model_1)$coef %>% View()
+summary(lg_model_1)
+
+comments_2 <- labeled_sampled_comments %>%
+  mutate(
+    spam = is_duplicate,
+    F1_likes = likes,
+    F2_dislikes = dislikes,
+    F3_likes_dislikes_ratio = likes / (dislikes + 1),
+    F4_title_length = nchar(title),
+    F5_body_length = nchar(body),
+    F6_advantages_length = nchar(advantages),
+    F7_disadvantages_length = nchar(disadvantages),
+    F8_asc_order = row_in_asc_product_comments,
+    F9_desc_order = row_in_desc_product_comments,
+    F10_product_price = price,
+    F11_product_rating = rate.y,
+    F12_review_rate = rate.x,
+    F13_deviation_from_product_rating = abs(rate.x * 20 - rate.y),
+    F14_number_of_rates = rate_cnt,
+    F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
+    F16_brand_commons = commons_mention_percent(body, brand_commons),
+    F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
+    F18_is_buyer = is_buyer
+  )
+lg_model_1 <- glm(
+  spam ~ F1_likes +
+    F2_dislikes +
+    F3_likes_dislikes_ratio +
+    F4_title_length +
+    F5_body_length +
+    F6_advantages_length +
+    F7_disadvantages_length +
+    F8_asc_order +
+    F9_desc_order +
+    F10_product_price +
+    F11_product_rating +
+    F12_review_rate +
+    # F13_deviation_from_product_rating +
+    F14_number_of_rates +
+    F15_brand_and_seller_mention_percent +
+    F16_brand_commons +
+    F17_non_brand_commons +
+    F18_is_buyer,
+  data = comments_2,
+  family = binomial
+)
+# roc
+test_prob <- predict(lg_model_1, type = "response")
+test_roc <- roc(comments_2$spam ~ test_prob, plot = TRUE, print.auc = TRUE)
+# check model
+summary(lg_model_1)$coef %>% View()
+```
+10 fold cross validation for duplicates
+```{r}
+comments_2_cr <- comments_2 %>%
+  mutate(is_spam = ifelse(spam, "Yes", "No"))
+comments_2_cr$is_spam <- as.factor(comments_2_cr$is_spam)
+comments_2_cr$is_spam <- relevel(comments_2_cr$is_spam, ref = "Yes")
+set.seed(1)
+train_control <- trainControl(method = "cv", number = 10, summaryFunction = twoClassSummary, savePredictions = "all", classProbs = TRUE) # nolint
+lg_model_1 <- train(
+  is_spam ~
+    F1_likes +
+    F2_dislikes +
+    F3_likes_dislikes_ratio +
+    F4_title_length +
+    F5_body_length +
+    F6_advantages_length +
+    F7_disadvantages_length +
+    F8_asc_order +
+    F9_desc_order +
+    F10_product_price +
+    F11_product_rating +
+    F12_review_rate +
+    F13_deviation_from_product_rating +
+    F14_number_of_rates +
+    F15_brand_and_seller_mention_percent +
+    F16_brand_commons +
+    F17_non_brand_commons +
+    F18_is_buyer,
+  data = comments_2_cr, method = "glm", family = "binomial", trControl = train_control, metric = "ROC"
+)
+lg_model_1
+```
+
+## Checking model performance heuristicly
+
+We will use the outlier opinion as a sypmtom of an spam.
+Spams typically have outlier opinion.
+
+```{r}
+comments_2_with_diff <- comments_2 %>%
+  mutate(
+    diff_with_product_avg = rate.x - (rate.y / 20),
+    diff_with_product_avg_status = case_when(
+      diff_with_product_avg > 1 ~ "Positive",
+      diff_with_product_avg < -2 ~ "Negetive",
+      .default = "Normal"
+    )
+  )
+comments_2_with_diff %>% nrow()
+comments_2_with_diff %>%
+  filter(diff_with_product_avg_status == "Positive") %>%
+  nrow()
+comments_2_with_diff %>%
+  filter(diff_with_product_avg_status == "Negetive") %>%
+  nrow()
+comments_2_with_prob <- comments_2_with_diff
+comments_2_with_prob$prob <- test_prob
+comments_2_with_prob <- comments_2_with_prob %>%
+  arrange(desc(prob))
+{
+  cummulative_df_1 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(diff_with_product_avg_status == "Positive"),
+      TotalPositive = sum(diff_with_product_avg_status == "Positive"),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  cummulative_df_2 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(diff_with_product_avg_status == "Negetive"),
+      TotalPositive = sum(diff_with_product_avg_status == "Negetive"),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+
+  baseline <- data.frame(
+    Percent = seq(0, 1, length.out = nrow(cummulative_df_1)),
+    Gain = seq(0, 1, length.out = nrow(cummulative_df_1))
+  )
+  ggplot(
+    cummulative_df_1,
+    aes(x = seq_along(prob) / nrow(cummulative_df_1), y = CumulativeGain)
+  ) +
+    geom_line(color = "blue") +
+    geom_line(
+      data = baseline,
+      aes(x = Percent, y = Gain), linetype = "dashed"
+    ) +
+    labs(
+      title = "Lift Curve",
+      x = "Percentage of Sample",
+      y = "Cumulative Gain"
+    ) +
+    geom_line(
+      data = cummulative_df_2,
+      aes(x = seq_along(prob) / nrow(cummulative_df_1), y = CumulativeGain),
+      color = "red"
+    ) +
+    theme_minimal()
+}
+cummulative_df %>%
+  head(50000) %>%
+  tail(1) %>%
+  select(CumulativePositive, TotalPositive, CumulativeGain) %>%
+  View()
+comments_2_with_prob %>%
+  tail(500) %>%
+  select(body, rate.x, rate.y, prob, F5_body_length, diff_with_product_avg, diff_with_product_avg_status) %>%
+  View()
+```
+
+
+Some manual checking of the model result
+```{r}
+# confusion matrix
+get_logistic_pred <- function(mod, pos = "Yes", neg = "No", cut = 0.5) {
+  probs <- predict(mod, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+test_pred_10 <- get_logistic_pred(lg_model, cut = 0.1)
+test_pred_50 <- get_logistic_pred(lg_model, cut = 0.5)
+test_pred_90 <- get_logistic_pred(lg_model, cut = 0.9)
+spam_chr <- ifelse(comments_2$spam, "Yes", "No")
+test_tab_10 <- table(predicted = test_pred_10, actual = spam_chr)
+test_tab_50 <- table(predicted = test_pred_50, actual = spam_chr)
+test_tab_90 <- table(predicted = test_pred_90, actual = spam_chr)
+# Will not work if there are "True"/"False" predictions
+test_con_mat_10 <- confusionMatrix(test_tab_10, positive = "Yes")
+test_con_mat_50 <- confusionMatrix(test_tab_50, positive = "Yes")
+test_con_mat_90 <- confusionMatrix(test_tab_90, positive = "Yes")
+# some important stats
+comments_2 %>%
+  nrow()
+actual_true <- comments_2 %>%
+  filter(spam == TRUE) %>%
+  nrow()
+actual_false <- comments_2 %>%
+  filter(spam == FALSE) %>%
+  nrow()
+actual_true
+actual_false
+# finding the threshold
+lg_probs <- predict(lg_model, type = "response", na.action = stop)
+length(lg_probs) == nrow(comments_2)
+lg_pred <- rep(FALSE, length(lg_probs))
+lg_pred[lg_probs > 0.15] <- TRUE
+new_comments_2 <- add_column(
+  .data = comments_2,
+  prediction = lg_pred
+) # creating new_comments_2, comments_2 with the prediction
+TP <- new_comments_2 %>%
+  filter(spam == TRUE & prediction == TRUE) %>%
+  nrow()
+TN <- new_comments_2 %>%
+  filter(spam == FALSE & prediction == FALSE) %>%
+  nrow()
+FP <- new_comments_2 %>%
+  filter(spam == FALSE & prediction == TRUE) %>%
+  nrow()
+FN <- new_comments_2 %>%
+  filter(spam == TRUE & prediction == FALSE) %>%
+  nrow()
+TN / (TN + FP)
+TP / (TP + FN)
+```
+
+# Analysis on spams detected
+
+Timeseries of pos/neg comments on a product
+```{r, eval=FALSE}
+# Filtering the comments with zero rate, to see the anomalies better
+comments_3 <- comments %>%
+  filter(rate != 0)
+
+product_comments_ts <- comments_3 %>% # comments %>%
+  arrange(created_at_greg) %>%
+  mutate(
+    recom_status = case_when(
+      rate >= 0 & rate < 2 ~ "Bad",
+      rate >= 2 & rate < 4 ~ "Normal",
+      rate >= 4 ~ "Good"
+    )
+  ) %>%
+  group_by(product_id) %>%
+  mutate(
+    day_count = length(unique(created_at_greg))
+  ) %>%
+  ungroup() %>%
+  arrange(desc(day_count))
+
+p_ids <- (product_comments_ts %>% select(product_id))[["product_id"]] %>%
+  unique()
+product_comments_ts %>%
+  filter(product_id %in% p_ids[1:5]) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  facet_grid(product_id ~ .)
+product_comments_ts %>%
+  filter(product_id %in% p_ids[55:60]) %>% ## 55-60
+  ggplot() +
+  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
+  facet_grid(recom_status ~ product_id)
+# sudden only pos/neg change
+# just one month increase in comment
+## 956949 2437016, 506914, 770216 , 2145003, 1167347, 2448826
+product_comments_ts %>%
+  filter(product_id %in% c(956949, 770216, 82078)) %>% ## 55-60
+  ggplot() +
+  geom_histogram(aes(x = created_at_greg, color = recom_status), binwidth = 30) +
+  facet_grid(recom_status ~ product_id)
+product_comments_ts %>%
+  filter(product_id == 956949) %>%
+  select(created_at_greg, rate, body) %>%
+  View()
+
+# 1. sudden Bad Rates
+product_comments_ts %>%
+  filter(product_id %in% c(
+    629761, 76937, 82138, 153035, 170694, 298695,
+    37424, 185959
+  )) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+# What is the reason for sudden bad rates?
+# 37424, 185959: between 2021-10 to 2022-6, all comments have rate == 0
+product_comments_ts %>%
+  filter(product_id == 185959) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+comments %>%
+  filter(product_id == 185959) %>%
+  select(created_at_greg, rate, is_buyer, body) %>%
+  arrange(created_at_greg) %>%
+  View()
+
+# 2. after a time (start of 2022), the number of ratings with bad rating generally decresses
+#    reason: after 2022, number of zero rates become much less!
+product_comments_ts %>%
+  filter(product_id %in% c(799907, 684093, 317249)) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt, color = recom_status)) +
+  facet_grid(product_id ~ .)
+product_comments_ts %>%
+  filter(product_id == 684093) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = cnt)) +
+  facet_grid(recom_status ~ product_id)
+comments %>%
+  filter(product_id == 684093) %>%
+  select(created_at_greg, rate, is_buyer, body) %>%
+  arrange(created_at_greg) %>%
+  View()
+# 317249: after a time, less rates no zero rates are placed
+# zero rates???
+comments %>%
+  filter(rate == 0) %>%
+  count(created_at_greg) %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = n))
+```
+
+```{r}
+# Fixing comments. No zero rate??
+comments %>%
+  group_by(created_at_greg) %>%
+  summarise(
+    cnt_zero = sum(rate == 0),
+    cnt_all = length(rate),
+    q = cnt_zero / cnt_all
+  ) %>%
+  ungroup() %>%
+  ggplot() +
+  geom_point(aes(x = created_at_greg, y = q))
+```
+
+Labeling a sample of comments.
+Type 1: non-related
+Type 2: brand related 
+
+```{r}
+set.seed(1)
+sample_count <- 10000
+labeling_sample <- comments %>%
+  sample_n(sample_count, replace = FALSE)
 ```
 
 Manual Labeling
@@ -632,25 +787,16 @@ cnt
 labeling_sample <- change_id_type_1(labeling_sample, ids, cnt)
 ```
 
-
 ## Model for detecting type 1 and type 2
 
 Using sampled dataset
 
 ```{r}
-load("labels_1.rda")
-load("labels_2.rda")
-type_1_labels %>% colnames()
-type_2_labels %>% colnames()
-type_1_labels$type_1_non_related %>% sum()
+load("spam.rda")
+type_2_labels <- x
 type_2_labels$type_2_brand_related %>% sum()
 comments_labeled <- left_join(
-  type_1_labels,
   type_2_labels,
-  by = join_by(id == id)
-)
-comments_labeled <- left_join(
-  comments_labeled,
   labeling_sample,
   by = join_by(id == id)
 )
@@ -660,22 +806,19 @@ comments_labeled <- left_join(
   by = join_by(product_id == id)
 )
 comments_labeled %>% colnames()
-```
-
-```{r, eval=FALSE}
-comments_labeled %>%
-  filter(type_1_non_related == TRUE) %>%
-  View()
 comments_labeled %>%
   filter(type_2_brand_related == TRUE) %>%
+  select(body) %>%
   View()
+tmp <- which(x$type_2_brand_related == TRUE)
+comments_labeled$type_2_brand_related[tmp] <- rep(TRUE, length(tmp))
 ```
 
 ```{r}
 # creating model
 comments_4 <- comments_labeled %>%
-
   mutate(
+    is_brand_related = ifelse(type_2_brand_related, "Yes", "No"),
     F1_likes = likes,
     F2_dislikes = dislikes,
     F3_likes_dislikes_ratio = likes / (dislikes + 1),
@@ -688,23 +831,33 @@ comments_4 <- comments_labeled %>%
     F10_product_price = price,
     F11_product_rating = rate.y,
     F12_review_rate = rate.x,
-    F13_deviation_from_product_rating = abs(rate.x*20-rate.y),
+    F13_deviation_from_product_rating = abs(rate.x * 20 - rate.y),
     F14_number_of_rates = rate_cnt,
     F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
     F16_brand_commons = commons_mention_percent(body, brand_commons),
     F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
     F18_is_buyer = is_buyer
   )
-
 ```
 
 ```{r}
 lg_model <- glm(
-  type_2_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
-    F4_title_length + F5_body_length + F6_advantages_length + F7_disadvantages_length +
-    F8_asc_order + F9_desc_order + F10_product_price + F11_product_rating +
-    F12_review_rate + F13_deviation_from_product_rating + F14_number_of_rates +
-    F15_brand_and_seller_mention_percent + F16_brand_commons + F17_non_brand_commons +
+  type_2_brand_related ~ F1_likes +
+    F2_dislikes +
+    F3_likes_dislikes_ratio +
+    F4_title_length +
+    F5_body_length +
+    F6_advantages_length +
+    F7_disadvantages_length +
+    F8_asc_order +
+    F9_desc_order +
+    F10_product_price +
+    F11_product_rating +
+    F12_review_rate +
+    F13_deviation_from_product_rating +
+    F14_number_of_rates +
+    F15_brand_and_seller_mention_percent +
+    F16_brand_commons + F17_non_brand_commons +
     F18_is_buyer,
   data = comments_4,
   family = binomial
@@ -713,96 +866,44 @@ lg_model <- glm(
 test_prob <- predict(lg_model, type = "response")
 test_roc <- roc(comments_4$type_2_brand_related ~ test_prob, plot = TRUE, print.auc = TRUE)
 summary(lg_model)$coef %>% View()
-
-```
-
-```{r}
-lg_model <- glm(
-  type_1_non_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
-    F4_title_length + F5_body_length + F6_asc_order + F7_desc_order +
-    F8_product_price + F9_product_rating + F10_review_rate +
-    F11_deviation_from_product_rating + F12_number_of_rates +
-    F13_brand_and_seller_mention_percent + F14_brand_commons +
-    F15_non_related_mention_percent +F16_is_buyer,
-  data = comments_4,
-  family = binomial
-)
-# roc
-test_prob <- predict(lg_model, type = "response")
-test_roc <- roc(comments_4$type_1_non_related ~ test_prob, plot = TRUE, print.auc = TRUE)
-summary(lg_model)$coef %>% View()
-```
-
-```{r}
-load('spam.rda')
-tmp <- which(x$type_2_brand_related == TRUE)
-comments_labeled$type_2_brand_related[tmp] <- rep(TRUE, length(tmp))
-ID <- c(
-)
-comments_labeled$type_2_brand_related[which(labeling_sample$id %in% ID)] <- rep(TRUE, length(ID))
-comments_labeled %>%
-  filter(id %in% ID) %>%
-  View()
 ```
 
 
 # 10 fold cross validation for brand related
 ```{r}
 comments_4 <- comments_4 %>%
-  mutate(is_brand_related = ifelse(type_2_brand_related, "Yes", "No"))
+  mutate()
 comments_2$is_brand_related <- as.factor(comments_2$is_brand_related)
 comments_2$is_brand_related <- relevel(comments_2$is_brand_related, ref = "Yes")
-set.seed(123)
-train_control <- trainControl(method="cv", number=10, summaryFunction = twoClassSummary, savePredictions = "all", classProbs = TRUE)   # nolint
-model_1 <- train(is_brand_related ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
-    F4_title_length + F5_body_length + F6_advantages_length + F7_disadvantages_length +
-    F8_asc_order + F9_desc_order + F10_product_price + F11_product_rating +
-    F12_review_rate + F13_deviation_from_product_rating + F14_number_of_rates +
-    F15_brand_and_seller_mention_percent + F16_brand_commons + F17_non_brand_commons +
-    F18_is_buyer, data = comments_4, method = "glm", family = "binomial", trControl = train_control)
+set.seed(1)
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  summaryFunction = twoClassSummary,
+  savePredictions = "all",
+  classProbs = TRUE
+)
+model_1 <- train(
+  is_brand_related ~ F1_likes +
+    F2_dislikes +
+    F3_likes_dislikes_ratio +
+    F4_title_length +
+    F5_body_length +
+    F6_advantages_length +
+    F7_disadvantages_length +
+    F8_asc_order +
+    F9_desc_order +
+    F10_product_price +
+    F11_product_rating +
+    F12_review_rate +
+    F13_deviation_from_product_rating +
+    F14_number_of_rates +
+    F15_brand_and_seller_mention_percent +
+    F16_brand_commons +
+    F17_non_brand_commons +
+    F18_is_buyer,
+  data = comments_4, method = "glm", family = "binomial", trControl = train_control
+)
 model_1
 summary(model_1)
-```
-
-```{r}
-comments_2 <- labeled_sampled_comments %>%
-  mutate(
-    F1_likes = likes,
-    F2_dislikes = dislikes,
-    F3_likes_dislikes_ratio = likes / (dislikes + 1),
-    F4_title_length = nchar(title),
-    F5_body_length = nchar(body),
-    F6_advantages_length = nchar(advantages),
-    F7_disadvantages_length = nchar(disadvantages),
-    F8_asc_order = row_in_asc_product_comments,
-    F9_desc_order = row_in_desc_product_comments,
-    F10_product_price = price,
-    F11_product_rating = rate.y,
-    F12_review_rate = rate.x,
-    F13_deviation_from_product_rating = abs(rate.x*20-rate.y),
-    F14_number_of_rates = rate_cnt,
-    F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
-    F16_brand_commons = commons_mention_percent(body, brand_commons),
-    F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
-    F18_is_buyer = is_buyer
-  )
-```
-
-# 10 fold cross validation for duplicates
-```{r}
-comments_2 <- comments_2 %>%
-  mutate(is_spam = ifelse(spam, "Yes", "No"))
-comments_2$is_spam <- as.factor(comments_2$is_spam)
-comments_2$is_spam <- relevel(comments_2$is_spam, ref = "Yes")
-set.seed(1)
-train_control <- trainControl(method="cv", number=10, summaryFunction = twoClassSummary, savePredictions = "all", classProbs = TRUE)   # nolint
-model_2 <- train(is_spam ~ F1_likes + F2_dislikes + F3_likes_dislikes_ratio +
-    F4_title_length + F5_body_length + F6_advantages_length + F7_disadvantages_length +
-    F8_asc_order + F9_desc_order + F10_product_price + F11_product_rating +
-    F12_review_rate + F13_deviation_from_product_rating + F14_number_of_rates +
-    F15_brand_and_seller_mention_percent + F16_brand_commons + F17_non_brand_commons +
-    F18_is_buyer, data = comments_2, method = "glm", family = "binomial", trControl = train_control, metric = "ROC")
-model_2
-View(head(model$pred, 30))
-summary(model$finalModel)
 ```

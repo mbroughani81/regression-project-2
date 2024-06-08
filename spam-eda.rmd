@@ -51,6 +51,9 @@ model_param_cnt_threshold <- 3
 ```{r}
 comments_1 <- comments %>%
   filter(year(created_at_greg) == 2022 & month(created_at_greg) >= 11)
+# comments_1 <- comments %>%
+#   filter(year(created_at_greg) == 2020) %>%
+#   filter(rate != 0)
 sampled_comments <- comments_1 %>%
   filter(nchar(body) > model_param_body_length) %>%
   group_by(product_id) %>%
@@ -361,14 +364,17 @@ Model 2 (lg_model_2): spam = is_duplicate and not is_buyer
 
 ```{r}
 comments_2 <- labeled_sampled_comments %>%
+  group_by(body) %>%
+  mutate(category_count = length(category_1)) %>%
+  ungroup() %>%
   mutate(
-    spam = is_duplicate,
+    spam = is_duplicate & category_count <= 3,
     F1_likes = likes,
     F2_dislikes = dislikes,
     F3_likes_dislikes_ratio = likes / (dislikes + 1),
     F4_title_length = nchar(title),
     F5_body_length = nchar(body),
-    # F5_body_length = pmin(nchar(body), 70),
+    # F5_body_length = pmin(nchar(body), 200),
     F6_advantages_length = nchar(advantages),
     F7_disadvantages_length = nchar(disadvantages),
     F8_asc_order = row_in_asc_product_comments,
@@ -381,7 +387,8 @@ comments_2 <- labeled_sampled_comments %>%
     F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
     F16_brand_commons = commons_mention_percent(body, brand_commons),
     F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
-    F18_is_buyer = is_buyer
+    F18_is_buyer = is_buyer,
+    F19_category_count = category_count
   )
 lg_model_1 <- glm(
   spam ~ F1_likes +
@@ -396,12 +403,13 @@ lg_model_1 <- glm(
     F10_product_price +
     F11_product_rating +
     F12_review_rate +
-    # F13_deviation_from_product_rating +
+    F13_deviation_from_product_rating +
     F14_number_of_rates +
     F15_brand_and_seller_mention_percent +
     F16_brand_commons +
     F17_non_brand_commons +
-    F18_is_buyer,
+    F18_is_buyer +
+    F19_category_count,
   data = comments_2,
   family = binomial
 )
@@ -414,7 +422,7 @@ summary(lg_model_1)
 
 comments_2 <- labeled_sampled_comments %>%
   mutate(
-    spam = is_duplicate,
+    spam = is_duplicate & ,
     F1_likes = likes,
     F2_dislikes = dislikes,
     F3_likes_dislikes_ratio = likes / (dislikes + 1),
@@ -432,7 +440,8 @@ comments_2 <- labeled_sampled_comments %>%
     F15_brand_and_seller_mention_percent = brand_and_seller_name_mention_percent(body, seller_title, brand),
     F16_brand_commons = commons_mention_percent(body, brand_commons),
     F17_non_brand_commons = commons_mention_percent(body, non_brand_commons),
-    F18_is_buyer = is_buyer
+    F18_is_buyer = is_buyer,
+    F19_category_count = length(category_1),
   )
 lg_model_1 <- glm(
   spam ~ F1_likes +
@@ -452,7 +461,8 @@ lg_model_1 <- glm(
     F15_brand_and_seller_mention_percent +
     F16_brand_commons +
     F17_non_brand_commons +
-    F18_is_buyer,
+    F18_is_buyer + 
+    F19_category_count,
   data = comments_2,
   family = binomial
 )
@@ -489,7 +499,7 @@ lg_model_1 <- train(
     F15_brand_and_seller_mention_percent +
     F16_brand_commons +
     F17_non_brand_commons +
-    F18_is_buyer,
+    F18_is_buyer +,
   data = comments_2_cr, method = "glm", family = "binomial", trControl = train_control, metric = "ROC"
 )
 lg_model_1
@@ -506,7 +516,7 @@ comments_2_with_diff <- comments_2 %>%
     diff_with_product_avg = rate.x - (rate.y / 20),
     diff_with_product_avg_status = case_when(
       diff_with_product_avg > 1 ~ "Positive",
-      diff_with_product_avg < -2 ~ "Negetive",
+      diff_with_product_avg < -1 ~ "Negetive",
       .default = "Normal"
     )
   )
@@ -571,6 +581,107 @@ comments_2_with_prob %>%
   View()
 ```
 
+```{r}
+comments_2_with_diff <- comments_2 %>%
+  group_by(body) %>%
+  mutate(
+    category_count = length(category_1),
+    category_count_status = case_when(
+      category_count > 3 ~ "Many",
+      category_count <= 3 & category_count > 1 ~ "Few",
+      .default = "One"
+    )
+  ) %>%
+  ungroup()
+comments_2_with_prob <- comments_2_with_diff
+comments_2_with_prob$prob <- test_prob
+comments_2_with_prob <- comments_2_with_prob %>%
+  arrange(desc(prob))
+{
+  cummulative_df_1 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(category_count_status == "Many"),
+      TotalPositive = sum(category_count_status == "Many"),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  cummulative_df_2 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(category_count_status == "Few"),
+      TotalPositive = sum(category_count_status == "Few"),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  cummulative_df_3 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(category_count_status == "One"),
+      TotalPositive = sum(category_count_status == "One"),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  ggplot(
+    cummulative_df_1,
+    aes(x = seq_along(prob) / nrow(cummulative_df_1), y = CumulativeGain)
+  ) +
+    geom_line(color = "green") +
+    geom_line(
+      data = baseline,
+      aes(x = Percent, y = Gain), linetype = "dashed"
+    ) +
+    labs(
+      title = "Lift Curve",
+      x = "Percentage of Sample",
+      y = "Cumulative Gain"
+    ) +
+    geom_line(
+      data = cummulative_df_2,
+      aes(x = seq_along(prob) / nrow(cummulative_df_2), y = CumulativeGain),
+      color = "red"
+    ) +
+    geom_line(
+      data = cummulative_df_3,
+      aes(x = seq_along(prob) / nrow(cummulative_df_3), y = CumulativeGain),
+      color = "purple"
+    ) +
+    theme_minimal()
+}
+{
+  cummulative_df_3 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(category_count_status == "Many" & is_buyer == TRUE),
+      TotalPositive = sum(category_count_status == "Many" & is_buyer == TRUE),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  cummulative_df_4 <- comments_2_with_prob %>%
+    mutate(
+      CumulativePositive = cumsum(category_count_status == "Many" & is_buyer == FALSE),
+      TotalPositive = sum(category_count_status == "Many" & is_buyer == FALSE),
+      CumulativeGain = CumulativePositive / TotalPositive
+    )
+  baseline <- data.frame(
+    Percent = seq(0, 1, length.out = nrow(cummulative_df_1)),
+    Gain = seq(0, 1, length.out = nrow(cummulative_df_1))
+  )
+  ggplot(
+    cummulative_df_3,
+    aes(x = seq_along(prob) / nrow(cummulative_df_1), y = CumulativeGain)
+  ) +
+    geom_line(color = "blue") +
+    geom_line(
+      data = baseline,
+      aes(x = Percent, y = Gain), linetype = "dashed"
+    ) +
+    labs(
+      title = "Lift Curve",
+      x = "Percentage of Sample",
+      y = "Cumulative Gain"
+    ) +
+    geom_line(
+      data = cummulative_df_4,
+      aes(x = seq_along(prob) / nrow(cummulative_df_1), y = CumulativeGain),
+      color = "red"
+    ) +
+    theme_minimal()
+}
+```
+
 
 Some manual checking of the model result
 ```{r}
@@ -624,6 +735,24 @@ FN <- new_comments_2 %>%
   nrow()
 TN / (TN + FP)
 TP / (TP + FN)
+```
+
+```{r}
+labeled_sampled_comments %>%
+  filter(is_duplicate == TRUE) %>%
+  filter(is_buyer == FALSE) %>%
+  group_by(body) %>%
+  summarise(
+    category_1_cnt = length(unique(category_1)),
+    category_2_cnt = length(unique(category_2)),
+    cat1 = toString(category_1),
+    cat2 = toString(category_2),
+    categories_cnt = category_1_cnt + category_2_cnt,
+    cnt = n()
+  ) %>%
+  ungroup() %>%
+  arrange(desc(cnt)) %>%
+  View()
 ```
 
 # Analysis on spams detected
